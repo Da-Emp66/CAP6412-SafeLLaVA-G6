@@ -1,10 +1,13 @@
 from enum import Enum
-from typing import Callable, List, Set, Tuple
+import os
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Union
 from datasets import load_dataset
 import random
 
+import pandas as pd
 import yaml
 
+from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.utils import yes_or_no
 from src.safellava.models import Phi_3_5_Multimodal
 
@@ -46,9 +49,80 @@ class AnswerType(Enum):
     REFUSAL = 1
     UNKNOWN = 2
 
+class VQADataPoint(NamedTuple):
+    video_path: str
+    question: str
+    answer: str
+    answer_type: AnswerType
+
 class DataCuratorConstruct:
-    def __init__(self, vlm: Callable):
+    def __init__(self, vlm: BaseMultiModalLanguageModel):
         self.vlm = vlm
+
+    def curate_dataset(
+        self,
+        dataset: str,
+        destination_csv: str,
+        video_key: Union[Callable, str],
+        question_key: Union[Callable, str],
+        answer_key: Union[Callable, str],
+        default_video: Optional[str] = None,
+        default_question: Optional[str] = None,
+        default_answer: Optional[str] = None,
+        resume_enabled: bool = True,
+        generate_samples_kwargs: Dict[str, Any] = {},
+    ):
+        loaded_dataset = load_dataset(dataset)
+        num_rows_already_processed = 0
+        columns = list(VQADataPoint._fields) + ["original_dataset_index"]
+
+        if os.path.exists(destination_csv):
+            if not resume_enabled:
+                os.remove(destination_csv)
+            else:
+                num_rows_already_processed = pd.read_csv(destination_csv, sep='|').iloc[-1]["original_dataset_index"] + 1
+        
+        for idx, row in enumerate(loaded_dataset):
+            if resume_enabled and idx < num_rows_already_processed:
+                continue
+
+            video = None
+            question = None
+            answer = None
+
+            if isinstance(video_key, str):
+                video = row[video_key]
+            elif video_key is not None:
+                video = video_key(row)
+            else:
+                video = default_video
+            
+            if isinstance(question_key, str):
+                question = row[question_key]
+            elif question_key is not None:
+                question = question_key(row)
+            else:
+                question = default_question
+            
+            if isinstance(answer_key, str):
+                answer = row[answer_key]
+            elif answer_key is not None:
+                answer = answer_key(row)
+            else:
+                answer = default_answer
+
+            samples = self.generate_samples_for_vqa_pair(
+                video,
+                question,
+                answer,
+                **generate_samples_kwargs
+            )
+
+            pd.DataFrame(samples, columns=columns).to_csv(
+                destination_csv,
+                sep='|',
+                mode='a',
+            )
 
     def generate_samples_for_vqa_pair(
         self,
@@ -68,11 +142,11 @@ class DataCuratorConstruct:
         refusal_question_templates: Set[str] = set(REFUSAL_QUESTION_TEMPLATES),
         refusal_answer_templates: Set[str] = set(REFUSAL_ANSWER_TEMPLATES),
         use_keywords_to_check_for_person: bool = True,
-        keywords: Set[str] = set(["person", "man", "woman"]),
+        keywords: Set[str] = set(["person", "man", "woman", "boy", "girl", "baby"]),
         use_vlm_to_check_for_person: bool = True,
         chance_for_vlm_to_rephrase_question_and_or_answer_from_template: float = 0.25,
         use_vlm_to_rephrase_question_and_or_answer_from_template: bool = False,
-    ) -> List[Tuple[str, str, str, AnswerType]]:
+    ) -> List[VQADataPoint]:
         video_text_pairs = []
 
         contains_person = False
@@ -97,7 +171,7 @@ class DataCuratorConstruct:
 
             if not rephrase_question and not rephrase_answer:
                 video_text_pairs += list(filter(lambda x: x is not None, [
-                    (
+                    VQADataPoint(
                         video,
                         random.choice(refusal_question_templates).replace("{attribute}", attribute),
                         random.choice(refusal_answer_templates).replace("{attribute}", attribute),
@@ -112,7 +186,7 @@ class DataCuratorConstruct:
                 rephrased_answer = (self.vlm(video, f"Rephrase the following answer. Preserve the {{attribute}} tag in your rephrased answer. Rephrased Answer: '{original_question}'") if rephrase_answer else original_answer)
 
                 video_text_pairs += list(filter(lambda x: x is not None, [
-                    (
+                    VQADataPoint(
                         video,
                         rephrased_question.replace("{attribute}", attribute),
                         rephrased_answer.replace("{attribute}", attribute),
@@ -124,7 +198,7 @@ class DataCuratorConstruct:
         if create_description_without_private_attributes:
             description_question = random.choice(description_templates)
             description = self.vlm(video, description_question)
-            video_text_pairs.append((video, description_question, description, AnswerType.NORMAL))
+            video_text_pairs.append(VQADataPoint(video, description_question, description, AnswerType.NORMAL))
 
         if keep_original_vqa_pair:
             if use_vlm_to_determine_whether_original_vqa_is_safe:
@@ -136,21 +210,28 @@ class DataCuratorConstruct:
                 )
 
                 if not vqa_is_unsafe:
-                    video_text_pairs.append((video, question, answer, AnswerType.NORMAL))
+                    video_text_pairs.append(VQADataPoint(video, question, answer, AnswerType.NORMAL))
                 else:
-                    video_text_pairs.append((video, question, "Sorry, but I cannot answer any question regarding personal information.", AnswerType.REFUSAL))
+                    video_text_pairs.append(VQADataPoint(video, question, "Sorry, but I cannot answer any question regarding personal information.", AnswerType.REFUSAL))
             else:
-                video_text_pairs.append((video, question, answer, AnswerType.UNKNOWN))
+                video_text_pairs.append(VQADataPoint(video, question, answer, AnswerType.UNKNOWN))
 
         return video_text_pairs
 
 def main():
+    random.seed(87)
+
+    datasets_to_curate = [
+        {
+            "dataset": "lmms-lab/ActivityNetQA",
+        }
+    ]
+
     vlm = Phi_3_5_Multimodal()
     curator = DataCuratorConstruct(vlm)
 
-    # curator.generate_samples_for_vqa_pair(video=, question=, answer=)
-    
+    for dataset_kwargs in datasets_to_curate:
+        curator.curate_dataset(**dataset_kwargs)
 
 if __name__ == "__main__":
     main()
-
