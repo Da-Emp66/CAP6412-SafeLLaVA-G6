@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import requests
 
+from safellava.interfaces import BaseMultiModalLanguageModel
+
 class MediaType(Enum):
     IMAGE = "image"
     VIDEO = "video"
@@ -100,3 +102,7 @@ def load_media(media_filepath: str, video_sample_rate: int) -> Tuple[MediaType, 
         return (MediaType.VIDEO, *load_video(media_filepath, sample_rate=video_sample_rate))
     else:
         raise NotImplementedError(f"`{Path(media_filepath).suffix}` not supported.")
+
+def yes_or_no(vlm: BaseMultiModalLanguageModel, video: str, question: str) -> bool:
+    response = vlm(video, question + "\nAnswer 'Yes' or 'No' with no other text. Answer: ")
+    return ("yes" in response.strip().lower())

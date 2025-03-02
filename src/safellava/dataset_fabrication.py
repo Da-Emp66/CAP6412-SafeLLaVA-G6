@@ -1,7 +1,11 @@
+from enum import Enum
 from typing import Callable, List, Set, Tuple
 from datasets import load_dataset
 import random
 
+import yaml
+
+from safellava.utils import yes_or_no
 from src.safellava.models import Phi_3_5_Multimodal
 
 DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
@@ -37,6 +41,11 @@ NON_PRIVATE_DESCRIPTION_TEMPLATES = [
     other physical characteristics.""",
 ]
 
+class AnswerType(Enum):
+    NORMAL = 0
+    REFUSAL = 1
+    UNKNOWN = 2
+
 class DataCuratorConstruct:
     def __init__(self, vlm: Callable):
         self.vlm = vlm
@@ -63,7 +72,7 @@ class DataCuratorConstruct:
         use_vlm_to_check_for_person: bool = True,
         chance_for_vlm_to_rephrase_question_and_or_answer_from_template: float = 0.25,
         use_vlm_to_rephrase_question_and_or_answer_from_template: bool = False,
-    ) -> List[Tuple[str, str]]:
+    ) -> List[Tuple[str, str, str, AnswerType]]:
         video_text_pairs = []
 
         contains_person = False
@@ -73,8 +82,7 @@ class DataCuratorConstruct:
             contains_person = True
 
         if not contains_person and use_vlm_to_check_for_person:
-            contains_person = self.vlm(video, "Does the video contain one or more people? Answer 'Yes' or 'No' with no other text. Answer: ")
-            contains_person = ("yes" in contains_person.replace("'", "").strip().lower())
+            contains_person = yes_or_no(self.vlm, video, "Does the video contain one or more people?")
 
         if not contains_person:
             return []
@@ -92,7 +100,8 @@ class DataCuratorConstruct:
                     (
                         video,
                         random.choice(refusal_question_templates).replace("{attribute}", attribute),
-                        random.choice(refusal_answer_templates).replace("{attribute}", attribute)
+                        random.choice(refusal_answer_templates).replace("{attribute}", attribute),
+                        AnswerType.REFUSAL,
                     ) if (random.random() < chance_to_create_refusal_per_attribute) else None \
                         for attribute in private_attributes_to_protect
                 ]))
@@ -106,7 +115,8 @@ class DataCuratorConstruct:
                     (
                         video,
                         rephrased_question.replace("{attribute}", attribute),
-                        rephrased_answer.replace("{attribute}", attribute)
+                        rephrased_answer.replace("{attribute}", attribute),
+                        AnswerType.REFUSAL,
                     ) if (random.random() < chance_to_create_refusal_per_attribute) else None \
                         for attribute in private_attributes_to_protect
                 ]))
@@ -114,13 +124,23 @@ class DataCuratorConstruct:
         if create_description_without_private_attributes:
             description_question = random.choice(description_templates)
             description = self.vlm(video, description_question)
-            video_text_pairs.append((video, description_question, description))
+            video_text_pairs.append((video, description_question, description, AnswerType.NORMAL))
 
         if keep_original_vqa_pair:
             if use_vlm_to_determine_whether_original_vqa_is_safe:
-                self.vlm(video, )
+                vqa_is_unsafe = yes_or_no(
+                    self.vlm,
+                    video,
+                    "Do either of these statements contain a reference to any of the following attributes?\n\nAttributes:\n" + \
+                        yaml.dumps(private_attributes_to_protect) + f"\n\nStatement 1: '{question}'\nStatement 2: '{answer}'"
+                )
+
+                if not vqa_is_unsafe:
+                    video_text_pairs.append((video, question, answer, AnswerType.NORMAL))
+                else:
+                    video_text_pairs.append((video, question, "Sorry, but I cannot answer any question regarding personal information.", AnswerType.REFUSAL))
             else:
-                video_text_pairs.append(video, question, answer)
+                video_text_pairs.append((video, question, answer, AnswerType.UNKNOWN))
 
         return video_text_pairs
 

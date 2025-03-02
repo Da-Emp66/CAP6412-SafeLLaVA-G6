@@ -1,10 +1,11 @@
 
 import abc
+from typing import Optional
 
-class BaseModel(metaclass=abc.ABCMeta):
+class BaseMultiModalLanguageModel(metaclass=abc.ABCMeta):
     def __init__(self):
         pass
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         raise NotImplementedError()
 
