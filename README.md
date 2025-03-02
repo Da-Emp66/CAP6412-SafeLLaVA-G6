@@ -2,10 +2,15 @@
 A research effort into removing Personally Identifiable Information (PII) from Multimodal Large Language Model (MLLM) outputs.
 
 
+### Install
+
+    . install-local.sh
+
+
 ### Folder Structure
 
 The folder structure of this project is organized as follows:
 
-    --./
-        --notebooks/      # Colab notebooks and recipes
+    ./
+    |---notebooks/      # Colab notebooks and recipes
 
