@@ -83,25 +83,69 @@ class DataCuratorConstruct:
         default_answer: Optional[str] = None,
         resume_enabled: bool = True,
         generate_samples_kwargs: Dict[str, Any] = {},
+        max_rows_of_original_dataset_to_consider: Optional[int] = None,
+        approximate_max_sample_count_to_obtain: Optional[int] = None,
     ):
+        """Obtain and 'cure' a dataset to be used for fine-tuning of SafeLLaVA.
+
+        Args:
+            dataset (str): HuggingFace dataset ID
+            destination_csv (str): Path to CSV file to offload datapoints
+            video_key (Union[Callable, str]): _description_
+            question_key (Union[Callable, str]): _description_
+            answer_key (Union[Callable, str]): _description_
+            default_video (Optional[str], optional): _description_. Defaults to None.
+            default_question (Optional[str], optional): _description_. Defaults to None.
+            default_answer (Optional[str], optional): _description_. Defaults to None.
+            resume_enabled (bool, optional): _description_. Defaults to True.
+            generate_samples_kwargs (Dict[str, Any], optional): _description_. Defaults to {}.
+            max_rows_of_original_dataset_to_consider (Optional[int], optional): _description_. Defaults to None.
+            approximate_max_sample_count_to_obtain (Optional[int], optional): _description_. Defaults to None.
+        """
+
+        # Load the HuggingFace dataset
         loaded_dataset = load_dataset(dataset)
+
+        # Prepare variables
+        num_samples_obtained = 0
         num_rows_already_processed = 0
         columns = list(VQADataPoint._fields) + ["original_dataset_index"]
 
+        # Check if the destination_csv already exists
         if os.path.exists(destination_csv):
+            # If resumption is disabled, we start fresh
+            # by first deleting the previous file
             if not resume_enabled:
                 os.remove(destination_csv)
             else:
-                num_rows_already_processed = pd.read_csv(destination_csv, sep='|').iloc[-1]["original_dataset_index"] + 1
+                # Otherwise, make sure we pick up where we left off in this particular dataset.
+                # We should make the assumption that each HuggingFace dataset will have its own
+                # destination CSV file. So, we are assuming that the row of the sample we left
+                # off on in the current CSV file is the row we should start at in the current
+                # dataset.
+                previous_df = pd.read_csv(destination_csv, sep='|')
+                num_rows_already_processed = previous_df.iloc[-1]["original_dataset_index"] + 1
+                num_samples_obtained = len(previous_df.index)
         
+        # For all the samples in the HuggingFace dataset
         for idx, row in enumerate(loaded_dataset):
+            # If we are past the maximum number of rows to consider
+            # or have generated enough samples given the approximate
+            # limit, break from iteration
+            if max_rows_of_original_dataset_to_consider is not None and idx >= max_rows_of_original_dataset_to_consider or \
+                approximate_max_sample_count_to_obtain is not None and num_samples_obtained >= approximate_max_sample_count_to_obtain:
+                break
+
+            # If we are resuming, continue at indices we have already obtained samples for
             if resume_enabled and idx < num_rows_already_processed:
                 continue
 
+            # Variables for this sampling round
             video = None
             question = None
             answer = None
 
+            # Obtain the video
             if isinstance(video_key, str):
                 video = row[video_key]
             elif video_key is not None:
@@ -109,6 +153,7 @@ class DataCuratorConstruct:
             else:
                 video = default_video
             
+            # Obtain the question
             if isinstance(question_key, str):
                 question = row[question_key]
             elif question_key is not None:
@@ -116,6 +161,7 @@ class DataCuratorConstruct:
             else:
                 question = default_question
             
+            # Obtain the answer
             if isinstance(answer_key, str):
                 answer = row[answer_key]
             elif answer_key is not None:
@@ -123,6 +169,7 @@ class DataCuratorConstruct:
             else:
                 answer = default_answer
 
+            # Generate the Video-Text pair samples for this row
             samples = self.generate_samples_for_vqa_pair(
                 video,
                 question,
@@ -130,6 +177,10 @@ class DataCuratorConstruct:
                 **generate_samples_kwargs
             )
 
+            # Add to the number of samples we have obtained
+            num_samples_obtained += len(samples)
+
+            # Offload the samples to the destination CSV file
             pd.DataFrame(samples, columns=columns).to_csv(
                 destination_csv,
                 sep='|',
@@ -309,7 +360,7 @@ class DataCuratorConstruct:
                 # VQA pair is a standard answer or a refusal
                 video_text_pairs.append(VQADataPoint(video, question, answer, AnswerType.UNKNOWN))
 
-        # Return all the VIdeo-Text pair samples
+        # Return all the Video-Text pair samples
         return video_text_pairs
 
 def main():
@@ -319,16 +370,20 @@ def main():
         {
             "dataset": "lmms-lab/ActivityNetQA",
             "destination_csv": "lmms-lab_ActivityNetQA",
+            "video_key": lambda row: row["video_name"],
+            "question_key": "question",
+            "answer_key": "answer",
+
         },
-        {
-            "dataset": "LanguageBind/Open-Sora-Plan-v1.2.0",
-            "destination_csv": "LanguageBind_Open-Sora-Plan-v1.2.0",
-            "answer_key": "cap",
-            "generate_samples_kwargs": {
-                "use_vlm_to_check_for_person": False,
-                "use_current_answer_as_description_response_but_rephrase_without_private_attributes": True,
-            },
-        },
+        # {
+        #     "dataset": "LanguageBind/Open-Sora-Plan-v1.2.0",
+        #     "destination_csv": "LanguageBind_Open-Sora-Plan-v1.2.0",
+        #     "answer_key": "cap",
+        #     "generate_samples_kwargs": {
+        #         "use_vlm_to_check_for_person": False,
+        #         "use_current_answer_as_description_response_but_rephrase_without_private_attributes": True,
+        #     },
+        # },
     ]
 
     vlm = Phi_3_5_Multimodal()
