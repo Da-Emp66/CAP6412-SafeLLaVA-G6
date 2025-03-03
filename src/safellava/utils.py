@@ -103,6 +103,3 @@ def load_media(media_filepath: str, video_sample_rate: int) -> Tuple[MediaType, 
     else:
         raise NotImplementedError(f"`{Path(media_filepath).suffix}` not supported.")
 
-def yes_or_no(vlm: BaseMultiModalLanguageModel, video: str, question: str) -> bool:
-    response = vlm(video, question + "\nAnswer 'Yes' or 'No' with no other text. Answer: ")
-    return ("yes" in response.strip().lower())
