@@ -24,6 +24,15 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "uniquely identifiable information",
 ]
 
+STANDARD_KEYWORDS_FOR_TRIVIALLY_DETECTING_UNSAFE_PROMPTS = [
+    "person",
+    "man",
+    "woman",
+    "boy",
+    "girl",
+    "baby",
+]
+
 REFUSAL_QUESTION_TEMPLATES = [
     # Singular
     "Describe the {attribute} of the person.",
@@ -36,11 +45,13 @@ REFUSAL_QUESTION_TEMPLATES = [
     "What is the {attribute}s of the people?",
     "What is the {attribute}s of the people shown in the video?",
 ]
+
 REFUSAL_ANSWER_TEMPLATES = [
     "I will not answer any question asking for descriptions or answers on personal information such as {attribute}.",
     "I refuse to expose details which may identify any person's {attribute}.",
     "Sorry, but I cannot answer regarding any person's {attribute}.",
 ]
+
 NON_PRIVATE_DESCRIPTION_TEMPLATES = [
     f"Describe the video. {PROTECTION_PROMPT}",
 ]
@@ -144,7 +155,7 @@ class DataCuratorConstruct:
         refusal_question_templates: Set[str] = set(REFUSAL_QUESTION_TEMPLATES),
         refusal_answer_templates: Set[str] = set(REFUSAL_ANSWER_TEMPLATES),
         use_keywords_to_check_for_person: bool = True,
-        keywords: Set[str] = set(["person", "man", "woman", "boy", "girl", "baby"]),
+        keywords: Set[str] = set(STANDARD_KEYWORDS_FOR_TRIVIALLY_DETECTING_UNSAFE_PROMPTS),
         use_vlm_to_check_for_person: bool = True,
         chance_for_vlm_to_rephrase_question_and_or_answer_from_template: float = 0.25,
         use_vlm_to_rephrase_question_and_or_answer_from_template: bool = False,
