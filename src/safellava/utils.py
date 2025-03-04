@@ -6,11 +6,10 @@ import cv2
 import numpy as np
 import requests
 
-from safellava.interfaces import BaseMultiModalLanguageModel
-
 class MediaType(Enum):
     IMAGE = "image"
     VIDEO = "video"
+    IMAGE_OR_VIDEO = "image or video"
 
 def open_images(media, verbose=False):
     """Open image, 1-D array of images, or 2-D array of images.

@@ -9,9 +9,10 @@ import yaml
 
 from safellava.interfaces import BaseMultiModalLanguageModel
 from src.safellava.models import Phi_3_5_Multimodal
+from src.safellava.utils import MediaType
 
-PROTECTION_PROMPT = """DO NOT describe the person or people in the video by anything other than `person`, `people`, or that person's or persons' occupation(s).
-Keep the overall video description detailed while excluding information about anyone in the video's age, sex, gender, race, hair color, hairstyle, facial or
+PROTECTION_PROMPT = """DO NOT describe the person or people in the {media} by anything other than `person`, `people`, or that person's or persons' occupation(s).
+Keep the overall {media} description detailed while excluding information about anyone in the {media}'s age, sex, gender, race, hair color, hairstyle, facial or
 other physical characteristics."""
 
 DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
@@ -24,7 +25,7 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "uniquely identifiable information",
 ]
 
-STANDARD_KEYWORDS_FOR_TRIVIALLY_DETECTING_UNSAFE_PROMPTS = [
+STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
     "woman",
@@ -36,24 +37,24 @@ STANDARD_KEYWORDS_FOR_TRIVIALLY_DETECTING_UNSAFE_PROMPTS = [
 REFUSAL_QUESTION_TEMPLATES = [
     # Singular
     "Describe the {attribute} of the person.",
-    "Describe the {attribute} of the person shown in the video.",
+    "Describe the {attribute} of the person shown in the {media}.",
     "What is the {attribute} of the person?",
-    "What is the {attribute} of the person shown in the video?",
+    "What is the {attribute} of the person shown in the {media}?",
     # Plural
     "Describe the {attribute}s of the people.",
-    "Describe the {attribute}s of the people shown in the video.",
+    "Describe the {attribute}s of the people shown in the {media}.",
     "What is the {attribute}s of the people?",
-    "What is the {attribute}s of the people shown in the video?",
+    "What is the {attribute}s of the people shown in the {media}?",
 ]
 
 REFUSAL_ANSWER_TEMPLATES = [
-    "I will not answer any question asking for descriptions or answers on personal information such as {attribute}.",
+    "I will not answer any question asking for descriptions on personal information such as {attribute}.",
     "I refuse to expose details which may identify any person's {attribute}.",
     "Sorry, but I cannot answer regarding any person's {attribute}.",
 ]
 
 NON_PRIVATE_DESCRIPTION_TEMPLATES = [
-    f"Describe the video. {PROTECTION_PROMPT}",
+    f"Describe the {{media}}. {PROTECTION_PROMPT}",
 ]
 
 class AnswerType(Enum):
@@ -62,7 +63,7 @@ class AnswerType(Enum):
     UNKNOWN = 2
 
 class VQADataPoint(NamedTuple):
-    video_path: str
+    media_path: str
     question: str
     answer: str
     answer_type: AnswerType
@@ -75,10 +76,10 @@ class DataCuratorConstruct:
         self,
         dataset: str,
         destination_csv: str,
-        video_key: Union[Callable, str],
+        media_key: Union[Callable, str],
         question_key: Union[Callable, str],
         answer_key: Union[Callable, str],
-        default_video: Optional[str] = None,
+        default_media: Optional[str] = None,
         default_question: Optional[str] = None,
         default_answer: Optional[str] = None,
         resume_enabled: bool = True,
@@ -91,10 +92,10 @@ class DataCuratorConstruct:
         Args:
             dataset (str): HuggingFace dataset ID
             destination_csv (str): Path to CSV file to offload datapoints
-            video_key (Union[Callable, str]): _description_
+            media_key (Union[Callable, str]): _description_
             question_key (Union[Callable, str]): _description_
             answer_key (Union[Callable, str]): _description_
-            default_video (Optional[str], optional): _description_. Defaults to None.
+            default_media (Optional[str], optional): _description_. Defaults to None.
             default_question (Optional[str], optional): _description_. Defaults to None.
             default_answer (Optional[str], optional): _description_. Defaults to None.
             resume_enabled (bool, optional): _description_. Defaults to True.
@@ -141,17 +142,17 @@ class DataCuratorConstruct:
                 continue
 
             # Variables for this sampling round
-            video = None
+            media = None
             question = None
             answer = None
 
-            # Obtain the video
-            if isinstance(video_key, str):
-                video = row[video_key]
-            elif video_key is not None:
-                video = video_key(row)
+            # Obtain the media
+            if isinstance(media_key, str):
+                media = row[media_key]
+            elif media_key is not None:
+                media = media_key(row)
             else:
-                video = default_video
+                media = default_media
             
             # Obtain the question
             if isinstance(question_key, str):
@@ -169,9 +170,9 @@ class DataCuratorConstruct:
             else:
                 answer = default_answer
 
-            # Generate the Video-Text pair samples for this row
+            # Generate the Media-Text pair samples for this row
             samples = self.generate_samples_for_vqa_pair(
-                video,
+                media,
                 question,
                 answer,
                 **generate_samples_kwargs
@@ -189,9 +190,10 @@ class DataCuratorConstruct:
 
     def generate_samples_for_vqa_pair(
         self,
-        video: str,
+        media: str,
         question: str,
         answer: str,
+        media_type: MediaType = MediaType.VIDEO,
         # Original text preservation args
         keep_original_vqa_pair: bool = True,
         use_vlm_to_determine_whether_original_vqa_is_safe: bool = True,
@@ -206,20 +208,20 @@ class DataCuratorConstruct:
         refusal_question_templates: Set[str] = set(REFUSAL_QUESTION_TEMPLATES),
         refusal_answer_templates: Set[str] = set(REFUSAL_ANSWER_TEMPLATES),
         use_keywords_to_check_for_person: bool = True,
-        keywords: Set[str] = set(STANDARD_KEYWORDS_FOR_TRIVIALLY_DETECTING_UNSAFE_PROMPTS),
+        keywords: Set[str] = set(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE),
         use_vlm_to_check_for_person: bool = True,
         chance_for_vlm_to_rephrase_question_and_or_answer_from_template: float = 0.25,
         use_vlm_to_rephrase_question_and_or_answer_from_template: bool = False,
     ) -> List[VQADataPoint]:
-        """Generate safe Video-Text (video + (question+answer)) pairs for the given video and/or its question and answer text.
+        """Generate safe Media-Text (media + (question+answer)) pairs for the given media and/or its question and answer text.
         This method works by generating samples in three ways:
 
-        1. Generating refusals for unsafe queries to the video.
+        1. Generating refusals for unsafe queries to the media.
         2. Generating a new, safe description according to a query from the templates, occasionally rephrased if enabled.
-        3. Taking the original Video-Text pair and making it safe, if possible.
+        3. Taking the original Media-Text pair and making it safe, if possible.
 
         Args:
-            video (str): _description_
+            media (str): _description_
             question (str): _description_
             answer (str): _description_
             keep_original_vqa_pair (bool, optional): _description_. Defaults to True.
@@ -239,34 +241,37 @@ class DataCuratorConstruct:
             use_vlm_to_rephrase_question_and_or_answer_from_template (bool, optional): _description_. Defaults to False.
 
         Returns:
-            List[VQADataPoint]: A list of samples that were generated from the original Video-Text pair
+            List[VQADataPoint]: A list of samples that were generated from the original Media-Text pair
         """
 
-        # Video-Text pair samples
-        video_text_pairs = []
+        # Media-Text pair samples
+        media_text_pairs = []
 
-        # Variable for discarding videos that do not contain people
+        # Determine the media type for prompting
+        media_category = media_type.value
+
+        # Variable for discarding medias that do not contain people
         # and are thus not target samples of what we care to show
         # the MLLM for tuning
         contains_person = False
 
-        # Check if there is a person in the video in a trivial manner
+        # Check if there is a person in the media in a trivial manner
         if use_keywords_to_check_for_person and \
             any([(keyword in question or keyword in answer) for keyword in keywords]):
             contains_person = True
 
-        # If we are still not sure if a person is in the video or not
+        # If we are still not sure if a person is in the media or not
         # and we run the VLM to give us a yes/no response if the setting
         # is enabled
         if not contains_person and use_vlm_to_check_for_person:
-            contains_person = self.vlm.yes_or_no(video, "Does the video contain one or more people?")
+            contains_person = self.vlm.yes_or_no(media, f"Does the {media_category} contain one or more people?")
 
-        # If the video does not contain a person, discard it.
+        # If the media does not contain a person, discard it.
         # There is certainly no privacy violation in this sample.
         if not contains_person:
             return []
         
-        # If we are supposed to create refusals for this video
+        # If we are supposed to create refusals for this media
         if create_refusals_for_private_attributes:
             rephrase_question = False
             rephrase_answer = False
@@ -281,36 +286,36 @@ class DataCuratorConstruct:
             if not rephrase_question and not rephrase_answer:
                 # Simply append the datapoints as they are, with template
                 # refusals for both question and answer
-                video_text_pairs += list(filter(lambda x: x is not None, [
+                media_text_pairs += list(filter(lambda x: x is not None, [
                     VQADataPoint(
-                        video,
-                        random.choice(refusal_question_templates).replace("{attribute}", attribute),
-                        random.choice(refusal_answer_templates).replace("{attribute}", attribute),
+                        media,
+                        random.choice(refusal_question_templates).replace("{attribute}", attribute).replace("{media}", media_category),
+                        random.choice(refusal_answer_templates).replace("{attribute}", attribute).replace("{media}", media_category),
                         AnswerType.REFUSAL,
                     ) if (random.random() < chance_to_create_refusal_per_attribute) else None \
                         for attribute in private_attributes_to_protect
                 ]))
             else:
                 # Pick a random question and answer refusal from the template
-                original_question = random.choice(refusal_question_templates)
-                original_answer = random.choice(refusal_answer_templates)
+                original_question = random.choice(refusal_question_templates).replace("{media}", media_category)
+                original_answer = random.choice(refusal_answer_templates).replace("{media}", media_category)
 
                 # Rephrase the question simply to prevent overfitting on the templates
                 rephrased_question = (self.vlm.rephrase(
-                    video,
+                    media,
                     original_question,
-                    extra_notes="Preserve the {{attribute}} tag in your rephrased sentence."
+                    extra_notes="Preserve the {attribute} tag in the same format in your rephrased sentence."
                 ) if rephrase_question else original_question)
                 rephrased_answer = (self.vlm.rephrase(
-                    video,
+                    media,
                     original_answer,
-                    extra_notes="Preserve the {{attribute}} tag in your rephrased sentence."
+                    extra_notes="Preserve the {attribute} tag in the same format in your rephrased sentence."
                 ) if rephrase_answer else original_answer)
 
-                # Append to the refusal Video-Text pair samples
-                video_text_pairs += list(filter(lambda x: x is not None, [
+                # Append to the refusal Media-Text pair samples
+                media_text_pairs += list(filter(lambda x: x is not None, [
                     VQADataPoint(
-                        video,
+                        media,
                         rephrased_question.replace("{attribute}", attribute),
                         rephrased_answer.replace("{attribute}", attribute),
                         AnswerType.REFUSAL,
@@ -318,21 +323,21 @@ class DataCuratorConstruct:
                         for attribute in private_attributes_to_protect
                 ]))
 
-        # If creating a custom description of the video is enabled
+        # If creating a custom description of the media is enabled
         if create_description_without_private_attributes:
             # Choose a random description question based on the templates
-            description_question = random.choice(description_templates)
+            description_question = random.choice(description_templates).replace("{media}", media_category)
 
             # If the answer given is the description we want to use
             if use_current_answer_as_description_response_but_rephrase_without_private_attributes:
                 # Rephrase the answer in a safe manner
-                description = self.vlm.rephrase(video, answer, extra_notes=PROTECTION_PROMPT)
+                description = self.vlm.rephrase(media, answer, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
             else:
                 # Generate a new, safe answer
-                description = self.vlm(video, description_question)
+                description = self.vlm(media, description_question).replace("{media}", media_category)
 
-            # Append the Video-Text pair to the samples generated
-            video_text_pairs.append(VQADataPoint(video, description_question, description, AnswerType.NORMAL))
+            # Append the Media-Text pair to the samples generated
+            media_text_pairs.append(VQADataPoint(media, description_question, description, AnswerType.NORMAL))
 
         # If keeping the original VQA pair is allowed
         if keep_original_vqa_pair:
@@ -344,24 +349,24 @@ class DataCuratorConstruct:
                 # Make sure it is safe and does not include a question or
                 # answer which contains exposure of private information
                 vqa_is_unsafe = self.vlm.yes_or_no(
-                    video,
+                    media,
                     "Do either of these statements contain a reference to any of the following attributes?\n\nAttributes:\n" + \
                         yaml.dumps(private_attributes_to_protect) + f"\n\nStatement 1: '{question}'\nStatement 2: '{answer}'"
                 )
 
                 if not vqa_is_unsafe:
-                    # If the original VQA is safe, append the Video-Text pair to the samples as a normal response
-                    video_text_pairs.append(VQADataPoint(video, question, answer, AnswerType.NORMAL))
+                    # If the original VQA is safe, append the Media-Text pair to the samples as a normal response
+                    media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.NORMAL))
                 else:
-                    # If the original VQA is unsafe, append the Video-Text pair to the samples as a refusal
-                    video_text_pairs.append(VQADataPoint(video, question, "Sorry, but I cannot answer any question regarding personal information.", AnswerType.REFUSAL))
+                    # If the original VQA is unsafe, append the Media-Text pair to the samples as a refusal
+                    media_text_pairs.append(VQADataPoint(media, question, "Sorry, but I cannot answer any question regarding personal information.", AnswerType.REFUSAL))
             else:
                 # The original VQA pair is assumed to be safe, although we do not know if the original
                 # VQA pair is a standard answer or a refusal
-                video_text_pairs.append(VQADataPoint(video, question, answer, AnswerType.UNKNOWN))
+                media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.UNKNOWN))
 
-        # Return all the Video-Text pair samples
-        return video_text_pairs
+        # Return all the Media-Text pair samples
+        return media_text_pairs
 
 def main():
     random.seed(87)
@@ -370,10 +375,28 @@ def main():
         {
             "dataset": "lmms-lab/ActivityNetQA",
             "destination_csv": "lmms-lab_ActivityNetQA",
-            "video_key": lambda row: row["video_name"],
+            "media_key": lambda row: row["video_name"],
             "question_key": "question",
             "answer_key": "answer",
-
+        },
+        {
+            "dataset": "lmms-lab/VideoDetailCaption",
+            "destination_csv": "lmms-lab_VideoDetailCaption",
+            "media_key": lambda row: row["video_name"],
+            "question_key": "question",
+            "answer_key": "answer",
+        },
+        {
+            "dataset": "dai22dai/video",
+            "destination_csv": "dai22dai_video",
+            "media_key": lambda row: row["image"],
+            "default_question": None,
+            "default_answer": None,
+            "generate_samples_kwargs": {
+                "media_type": MediaType.IMAGE,
+                "use_vlm_to_check_for_person": False,
+                "keep_original_vqa_pair": False,
+            },
         },
         # {
         #     "dataset": "LanguageBind/Open-Sora-Plan-v1.2.0",

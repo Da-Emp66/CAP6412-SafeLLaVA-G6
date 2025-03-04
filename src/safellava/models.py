@@ -3,7 +3,6 @@ from transformers import AutoModelForCausalLM, AutoProcessor
 from src.safellava.interfaces import BaseMultiModalLanguageModel
 from src.safellava.utils import get_video_length_seconds, load_media
 
-
 class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
     def __init__(self):
         self.model_id = "microsoft/Phi-3.5-vision-instruct" 

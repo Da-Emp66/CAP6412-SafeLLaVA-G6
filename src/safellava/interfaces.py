@@ -15,3 +15,4 @@ class BaseMultiModalLanguageModel(metaclass=abc.ABCMeta):
 
     def rephrase(self, video: str, question: str, extra_notes: str) -> str:
         return self(video, f"Rephrase the following sentence. {extra_notes} Rephrased Sentence: '{question}'")
+    
