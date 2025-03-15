@@ -7,6 +7,7 @@ import random
 import pandas as pd
 import yaml
 
+from safellava.datasets import load_visogender
 from safellava.interfaces import BaseMultiModalLanguageModel
 from src.safellava.models import Phi_3_5_Multimodal
 from src.safellava.utils import MediaType
@@ -28,9 +29,13 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
 STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
+    "male",
     "woman",
+    "female",
     "boy",
     "girl",
+    "adult",
+    "child",
     "baby",
 ]
 
@@ -75,14 +80,17 @@ class DataCuratorConstruct:
     def curate_dataset(
         self,
         dataset: str,
-        destination_csv: str,
-        media_key: Union[Callable, str],
-        question_key: Union[Callable, str],
-        answer_key: Union[Callable, str],
+        dataset_obtain_strategy: Callable = load_dataset,
+        dataset_obtain_kwargs: Dict[str, Any] = {},
+        destination_csv: Optional[str] = None,
+        media_key: Optional[Union[Callable, str]] = None,
+        question_key: Optional[Union[Callable, str]] = None,
+        answer_key: Optional[Union[Callable, str]] = None,
         default_media: Optional[str] = None,
         default_question: Optional[str] = None,
         default_answer: Optional[str] = None,
         resume_enabled: bool = True,
+        generate_samples_strategy: Callable = None,
         generate_samples_kwargs: Dict[str, Any] = {},
         max_rows_of_original_dataset_to_consider: Optional[int] = None,
         approximate_max_sample_count_to_obtain: Optional[int] = None,
@@ -90,22 +98,34 @@ class DataCuratorConstruct:
         """Obtain and 'cure' a dataset to be used for fine-tuning of SafeLLaVA.
 
         Args:
-            dataset (str): HuggingFace dataset ID
-            destination_csv (str): Path to CSV file to offload datapoints
-            media_key (Union[Callable, str]): _description_
-            question_key (Union[Callable, str]): _description_
-            answer_key (Union[Callable, str]): _description_
+            dataset (str): HuggingFace dataset ID or dataset name
+            dataset_obtain_strategy (Callable, optional): _description_. Defaults to load_dataset.
+            dataset_obtain_kwargs (Dict[str, Any], optional): _description_. Defaults to {}.
+            destination_csv (Optional[str], optional): Path to CSV file to offload datapoints. Defaults to f"{dataset}_curated.csv".replace('/', "_").
+            media_key (Optional[Union[Callable, str]], optional): _description_
+            question_key (Optional[Union[Callable, str]], optional): _description_
+            answer_key (Optional[Union[Callable, str]], optional): _description_
             default_media (Optional[str], optional): _description_. Defaults to None.
             default_question (Optional[str], optional): _description_. Defaults to None.
             default_answer (Optional[str], optional): _description_. Defaults to None.
             resume_enabled (bool, optional): _description_. Defaults to True.
+            generate_samples_strategy (Callable, optional): _description_. Defaults to self.generate_samples_for_vqa_pair.
             generate_samples_kwargs (Dict[str, Any], optional): _description_. Defaults to {}.
             max_rows_of_original_dataset_to_consider (Optional[int], optional): _description_. Defaults to None.
             approximate_max_sample_count_to_obtain (Optional[int], optional): _description_. Defaults to None.
         """
 
-        # Load the HuggingFace dataset
-        loaded_dataset = load_dataset(dataset)
+        if destination_csv is None:
+            destination_csv = f"{dataset}_curated.csv".replace('/', "_")
+
+        if generate_samples_strategy is None:
+            generate_samples_strategy = self.generate_samples_for_vqa_pair
+
+        # Obtain the HuggingFace or other dataset
+        loaded_dataset = dataset_obtain_strategy(
+            dataset,
+            **dataset_obtain_kwargs
+        )
 
         # Prepare variables
         num_samples_obtained = 0
@@ -120,7 +140,7 @@ class DataCuratorConstruct:
                 os.remove(destination_csv)
             else:
                 # Otherwise, make sure we pick up where we left off in this particular dataset.
-                # We should make the assumption that each HuggingFace dataset will have its own
+                # We should make the assumption that each HuggingFace or other dataset will have its own
                 # destination CSV file. So, we are assuming that the row of the sample we left
                 # off on in the current CSV file is the row we should start at in the current
                 # dataset.
@@ -128,7 +148,7 @@ class DataCuratorConstruct:
                 num_rows_already_processed = previous_df.iloc[-1]["original_dataset_index"] + 1
                 num_samples_obtained = len(previous_df.index)
         
-        # For all the samples in the HuggingFace dataset
+        # For all the samples in the HuggingFace or other dataset
         for idx, row in enumerate(loaded_dataset):
             # If we are past the maximum number of rows to consider
             # or have generated enough samples given the approximate
@@ -171,7 +191,7 @@ class DataCuratorConstruct:
                 answer = default_answer
 
             # Generate the Media-Text pair samples for this row
-            samples = self.generate_samples_for_vqa_pair(
+            samples = generate_samples_strategy(
                 media,
                 question,
                 answer,
@@ -191,8 +211,8 @@ class DataCuratorConstruct:
     def generate_samples_for_vqa_pair(
         self,
         media: str,
-        question: str,
-        answer: str,
+        question: Optional[str] = None,
+        answer: Optional[str] = None,
         media_type: MediaType = MediaType.VIDEO,
         # Original text preservation args
         keep_original_vqa_pair: bool = True,
@@ -222,8 +242,8 @@ class DataCuratorConstruct:
 
         Args:
             media (str): _description_
-            question (str): _description_
-            answer (str): _description_
+            question (str, optional): _description_
+            answer (str, optional): _description_
             keep_original_vqa_pair (bool, optional): _description_. Defaults to True.
             use_vlm_to_determine_whether_original_vqa_is_safe (bool, optional): _description_. Defaults to True.
             create_description_without_private_attributes (bool, optional): _description_. Defaults to True.
@@ -329,7 +349,7 @@ class DataCuratorConstruct:
             description_question = random.choice(description_templates).replace("{media}", media_category)
 
             # If the answer given is the description we want to use
-            if use_current_answer_as_description_response_but_rephrase_without_private_attributes:
+            if answer is not None and use_current_answer_as_description_response_but_rephrase_without_private_attributes:
                 # Rephrase the answer in a safe manner
                 description = self.vlm.rephrase(media, answer, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
             else:
@@ -340,7 +360,7 @@ class DataCuratorConstruct:
             media_text_pairs.append(VQADataPoint(media, description_question, description, AnswerType.NORMAL))
 
         # If keeping the original VQA pair is allowed
-        if keep_original_vqa_pair:
+        if question is not None and answer is not None and keep_original_vqa_pair:
 
             # If the original VQA pair is potentially unsafe,
             # the following should be `True`
@@ -374,30 +394,41 @@ def main():
     datasets_to_curate = [
         {
             "dataset": "lmms-lab/ActivityNetQA",
-            "destination_csv": "lmms-lab_ActivityNetQA",
             "media_key": lambda row: row["video_name"],
             "question_key": "question",
             "answer_key": "answer",
+            "approximate_max_sample_count_to_obtain": 200,
         },
         {
             "dataset": "lmms-lab/VideoDetailCaption",
-            "destination_csv": "lmms-lab_VideoDetailCaption",
             "media_key": lambda row: row["video_name"],
             "question_key": "question",
             "answer_key": "answer",
+            "approximate_max_sample_count_to_obtain": 200,
         },
         {
             "dataset": "dai22dai/video",
-            "destination_csv": "dai22dai_video",
             "media_key": lambda row: row["image"],
-            "default_question": None,
-            "default_answer": None,
+            "approximate_max_sample_count_to_obtain": 200,
             "generate_samples_kwargs": {
                 "media_type": MediaType.IMAGE,
                 "use_vlm_to_check_for_person": False,
                 "keep_original_vqa_pair": False,
             },
         },
+        {
+            "dataset": "Visogender",
+            "dataset_obtain_strategy": load_visogender,
+            "approximate_max_sample_count_to_obtain": 200,
+            "generate_samples_kwargs": {
+                "media_type": MediaType.IMAGE,
+                "use_vlm_to_check_for_person": False,
+            }
+        },
+        {
+
+        },
+
         # {
         #     "dataset": "LanguageBind/Open-Sora-Plan-v1.2.0",
         #     "destination_csv": "LanguageBind_Open-Sora-Plan-v1.2.0",
