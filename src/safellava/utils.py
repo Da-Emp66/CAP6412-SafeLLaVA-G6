@@ -1,10 +1,107 @@
 from enum import Enum
+from io import BytesIO, StringIO
+import os
 from pathlib import Path
-from typing import Any, List, Tuple
+from tempfile import NamedTemporaryFile, TemporaryFile
+from typing import Any, Dict, List, Tuple, TypeAlias, Union
+from urllib.parse import urlparse
+import uuid
 from PIL import Image
 import cv2
 import numpy as np
 import requests
+
+#####################################################
+# Basic File I/O
+#####################################################
+
+class FileType(Enum):
+    STRINGIFIED_CONTENT = [str]
+    IN_MEMORY_FILE = [BytesIO, StringIO]
+    TEMPORARY_FILE = [TemporaryFile, NamedTemporaryFile]
+    REAL_FILE = [str, Path]
+
+SomeFileType: TypeAlias = Union[
+    str,
+    BytesIO,
+    StringIO,
+    TemporaryFile,
+    NamedTemporaryFile,
+    Path,
+]
+
+def convert_string_to_file(content: str, target: FileType, **kwargs: Dict[str, Any]) -> SomeFileType:
+    """Convert the string to a given file type.
+
+    Args:
+        content (str): Stringified file contents
+        target (FileType): Target file type to convert contents to
+
+    Returns:
+        SomeFileType: The file with the specified contents written.
+    """
+
+    mode = kwargs.get("mode", "w+")
+    filename = kwargs.get("filename", str(uuid.uuid4()))
+
+    if target == FileType.STRINGIFIED_CONTENT:
+        return content
+    elif target == FileType.IN_MEMORY_FILE:
+        return StringIO(content)
+    elif target == FileType.TEMPORARY_FILE:
+        file = NamedTemporaryFile(mode)
+        file.write(content)
+        return file
+    elif target == FileType.REAL_FILE:
+        with open(filename, mode) as file:
+            file.write(content)
+            file.close()
+        return file
+
+def load_online_files(
+        urls: List[str],
+        target: FileType = FileType.REAL_FILE,
+        downloads_dir: str = "./data_downloads",
+        skip_if_exists: bool = True,
+    ) -> List[FileType]:
+    """Load an online file to a string, in-memory file, temporary file, or real file.
+
+    Args:
+        urls (List[str]): _description_
+        target (FileType, optional): _description_. Defaults to FileType.REAL_FILE.
+
+    Returns:
+        Union[str, StringIO]: _description_
+    """
+
+    files = []
+
+    for idx, url in enumerate(urls):
+        future_filename = os.path.join(downloads_dir, os.path.basename(urlparse(url).path))
+
+        if not os.path.exists(future_filename) or (os.path.exists(future_filename) and not skip_if_exists):
+            if target == FileType.REAL_FILE:
+                os.makedirs(downloads_dir, exist_ok=True)
+
+            response = requests.get(url)
+            if response.ok:
+                files.append(
+                    convert_string_to_file(
+                        response.text,
+                        target=target,
+                        filename=future_filename,
+                    )
+                )
+            else:
+                print(f"Failed to get `{url}`: {response.status_code}", flush=True)
+        else:
+            print(f"Skipping `{url}` download as it already exists at `{future_filename}`")
+
+    return files
+
+#####################################################
+# Images, Videos, and Other Media
+#####################################################
 
 class MediaType(Enum):
     IMAGE = "image"
@@ -101,4 +198,3 @@ def load_media(media_filepath: str, video_sample_rate: int) -> Tuple[MediaType, 
         return (MediaType.VIDEO, *load_video(media_filepath, sample_rate=video_sample_rate))
     else:
         raise NotImplementedError(f"`{Path(media_filepath).suffix}` not supported.")
-
