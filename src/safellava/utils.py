@@ -5,10 +5,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryFile
 from typing import Any, Dict, List, Tuple, TypeAlias, Union
 from urllib.parse import urlparse
+import urllib.request
 import uuid
 from PIL import Image
 import cv2
 import numpy as np
+import pytube
 import requests
 
 #####################################################
@@ -63,41 +65,67 @@ def load_online_files(
         target: FileType = FileType.REAL_FILE,
         downloads_dir: str = "./data_downloads",
         skip_if_exists: bool = True,
-    ) -> List[FileType]:
-    """Load an online file to a string, in-memory file, temporary file, or real file.
+    ) -> List[SomeFileType]:
+    """Load online files to strings, in-memory files, temporary files, or real files.
 
     Args:
         urls (List[str]): _description_
         target (FileType, optional): _description_. Defaults to FileType.REAL_FILE.
+        downloads_dir (str, optional): _description_. Defaults to "./data_downloads".
+        skip_if_exists (bool, optional): _description_. Defaults to True.
 
     Returns:
-        Union[str, StringIO]: _description_
+        List[SomeFileType]: _description_
     """
 
     files = []
 
     for idx, url in enumerate(urls):
-        future_filename = os.path.join(downloads_dir, os.path.basename(urlparse(url).path))
+        parsed_url = urlparse(url)
+        future_filename = os.path.join(downloads_dir, os.path.basename(parsed_url.path))
 
         if not os.path.exists(future_filename) or (os.path.exists(future_filename) and not skip_if_exists):
             if target == FileType.REAL_FILE:
                 os.makedirs(downloads_dir, exist_ok=True)
 
-            response = requests.get(url)
-            if response.ok:
-                files.append(
-                    convert_string_to_file(
-                        response.text,
-                        target=target,
-                        filename=future_filename,
+            if parsed_url.scheme == "http" or parsed_url.scheme == "https":
+                response = requests.get(url)
+                
+                if response.ok:
+                    files.append(
+                        convert_string_to_file(
+                            response.text,
+                            target=target,
+                            filename=future_filename,
+                        )
                     )
-                )
+                else:
+                    print(f"Failed to get `{url}`: {response.status_code}", flush=True)
+            elif parsed_url.scheme == "ftp":
+                urllib.request.urlretrieve(url, future_filename)
             else:
-                print(f"Failed to get `{url}`: {response.status_code}", flush=True)
+                print(f"Scheme `{parsed_url.scheme}` not supported. Please use `http`, `https`, or `ftp`.")
         else:
             print(f"Skipping `{url}` download as it already exists at `{future_filename}`")
 
     return files
+
+def download_youtube_video(video_id: str, download_folder: str = ".") -> str:
+    """Download a Youtube video based on its video ID
+
+    Args:
+        video_id (str): Youtube video ID
+        
+    Returns:
+        str: _description_
+    """
+    yt = pytube.YouTube(f"https://www.youtube.com/watch?v={video_id}")
+    stream = yt.streams.get_highest_resolution()
+    filename = f"{stream.default_filename.replace('.')[:-1]}.mp4"
+    return stream.download(
+        output_path=download_folder,
+        filename=filename,
+    )
 
 #####################################################
 # Images, Videos, and Other Media

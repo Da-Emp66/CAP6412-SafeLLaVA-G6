@@ -30,6 +30,8 @@ dependencies = [
     "safetensors>=0.5.2",
     "xformers>=0.0.29.post1",
     "datasets>=3.3.2",
+    "pytube>=15.0.0",
+    "kagglehub>=0.3.10",
 ]
 
 # [tool.uv]

@@ -141,7 +141,7 @@ class DataCuratorConstruct:
                 media,
                 question,
                 answer,
-                **generate_samples_kwargs
+                **generate_samples_kwargs,
             )
 
             # Add to the number of samples we have obtained

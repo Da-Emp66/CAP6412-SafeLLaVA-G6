@@ -184,11 +184,13 @@ dependencies = [
     { name = "bitsandbytes" },
     { name = "datasets" },
     { name = "diffusers" },
+    { name = "kagglehub" },
     { name = "llava" },
     { name = "maturin" },
     { name = "opencv-python" },
     { name = "optimum-quanto" },
     { name = "pillow" },
+    { name = "pytube" },
     { name = "quanto" },
     { name = "safetensors" },
     { name = "scikit-learn" },
@@ -208,11 +210,13 @@ requires-dist = [
     { name = "bitsandbytes", specifier = ">=0.45.0" },
     { name = "datasets", specifier = ">=3.3.2" },
     { name = "diffusers", specifier = ">=0.32.2" },
+    { name = "kagglehub", specifier = ">=0.3.10" },
     { name = "llava", git = "https://github.com/haotian-liu/LLaVA.git" },
     { name = "maturin", specifier = ">=1.8.1" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "optimum-quanto", specifier = ">=0.2.6" },
     { name = "pillow", specifier = ">=11.1.0" },
+    { name = "pytube", specifier = ">=15.0.0" },
     { name = "quanto", specifier = ">=0.2.0" },
     { name = "safetensors", specifier = ">=0.5.2" },
     { name = "scikit-learn", specifier = ">=1.2.2" },
@@ -508,6 +512,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/64/33/60135848598c076ce4b231e1b1895170f45fbcaeaa2c9d5e38b04db70c35/joblib-1.4.2.tar.gz", hash = "sha256:2382c5816b2636fbd20a09e0f4e9dad4736765fdfb7dca582943b9c1366b3f0e", size = 2116621 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/29/df4b9b42f2be0b623cbd5e2140cafcaa2bef0759a00b7b70104dcfe2fb51/joblib-1.4.2-py3-none-any.whl", hash = "sha256:06d478d5674cbc267e7496a410ee875abd68e4340feff4490bcb7afb88060ae6", size = 301817 },
+]
+
+[[package]]
+name = "kagglehub"
+version = "0.3.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/b6/598259f1b5af7d0ad31f479080da4e8c533c189eb0cf072cb70ab8d75869/kagglehub-0.3.10.tar.gz", hash = "sha256:7df4238eea20817bce13bfacbe79ff4c0a583a9e876bfaf16d7ad6179611fb7c", size = 106415 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/41/f5/d1fb003b997cccda7e7567e9768ab1ad5f4be014875773299c67c62b3b96/kagglehub-0.3.10-py3-none-any.whl", hash = "sha256:82a204e77919da54021038971ed735450c91ea479c5c003d140a22503bc20981", size = 63039 },
 ]
 
 [[package]]
@@ -1222,6 +1241,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892 },
+]
+
+[[package]]
+name = "pytube"
+version = "15.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/e7/16fec46c8d255c4bbc4b185d89c91dc92cdb802836570d8004d0db169c91/pytube-15.0.0.tar.gz", hash = "sha256:076052efe76f390dfa24b1194ff821d4e86c17d41cb5562f3a276a8bcbfc9d1d", size = 67229 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/64/bcf8632ed2b7a36bbf84a0544885ffa1d0b4bcf25cc0903dba66ec5fdad9/pytube-15.0.0-py3-none-any.whl", hash = "sha256:07b9904749e213485780d7eb606e5e5b8e4341aa4dccf699160876da00e12d78", size = 57594 },
 ]
 
 [[package]]

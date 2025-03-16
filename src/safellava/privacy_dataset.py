@@ -1,6 +1,8 @@
 import random
 from typing import List, Optional, Set
 from datasets import load_dataset
+import kagglehub
+import tarfile
 import yaml
 from safellava.dataset_fabrication import AnswerType, DataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
@@ -16,6 +18,7 @@ Keep the overall {media} description detailed while excluding information about 
 other physical characteristics."""
 
 DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
+    "name",
     "age",
     "race",
     "sex",
@@ -66,17 +69,72 @@ NON_PRIVATE_DESCRIPTION_TEMPLATES = [
 #####################################################
 
 def load_visogender(
-        _dataset_name: str,
-        urls: List[str] = [
-            "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
-            "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
-            "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
-        ],
-    ):
-
+    _dataset_name: str = "visogender",
+    urls: List[str] = [
+        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
+        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
+        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
+    ],
+):
     files = load_online_files(urls)
-
     return load_dataset("csv", data_files=files)
+
+def load_hollywood2(
+    _dataset_name: str = "hollywood2",
+    urls: List[str] = [
+        "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz",
+        "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-scenes.tar.gz",
+    ],
+):
+    files = load_online_files(urls)
+    for file in files:
+        tarfile.open(file).extractall(file.strip(".tar.gz"))
+    raise NotImplementedError()
+
+def load_video_story(
+    _dataset_name: str = "video_story",
+    urls: List[str] = [
+        "https://isis-data.science.uva.nl/mediamill/videostory/vs_v1.tar.gx",
+    ],
+):
+    files = load_online_files(urls)
+    for file in files:
+        tarfile.open(file).extractall(file.strip(".tar.gx"))
+    raise NotImplementedError()
+
+def load_vatex_video_captioning(
+    _dataset_name: str = "vatex",
+    urls: List[str] = [
+        "https://eric-xw.github.io/vatex-website/data/vatex_training_v1.0.json",
+    ],
+):
+    pass
+    
+def load_youtube_pose(
+    _dataset_name: str = "youtube-pose",
+    kaggle_handle: str = "soumikrakshit/youtube-pose-dataset",
+):
+    path = kagglehub.dataset_download(kaggle_handle)
+    print("Path to dataset files:", path)
+
+def load_condensed_movies(
+    _dataset_name: str,
+    urls: List[str] = [
+        "https://raw.githubusercontent.com/m-bain/CondensedMovies/refs/heads/master/data/metadata/clips.csv",
+        "https://raw.githubusercontent.com/m-bain/CondensedMovies/refs/heads/master/data/metadata/descriptions.csv",
+        "https://raw.githubusercontent.com/m-bain/CondensedMovies/refs/heads/master/data/metadata/durations.csv",
+        "https://github.com/m-bain/CondensedMovies/blob/master/data/metadata/movie_info.csv",
+    ],
+):
+    pass
+
+def load_narrated_instruction_videos(
+    _dataset_name: str,
+    urls: List[str] = [
+        "https://www.di.ens.fr/willow/research/instructionvideos/data_new.tar.gz",
+    ],
+):
+    pass
 
 #####################################################
 # Sample Generation
@@ -271,50 +329,61 @@ def main():
     random.seed(87)
 
     datasets_to_curate = [
+        
+        #####################################################
+        # Videos
+        #####################################################
+
         {
-            "dataset": "lmms-lab/ActivityNetQA",
-            "media_key": lambda row: row["video_name"],
-            "question_key": "question",
-            "answer_key": "answer",
-            "approximate_max_sample_count_to_obtain": 200,
-        },
-        {
-            "dataset": "lmms-lab/VideoDetailCaption",
-            "media_key": lambda row: row["video_name"],
-            "question_key": "question",
-            "answer_key": "answer",
-            "approximate_max_sample_count_to_obtain": 200,
-        },
-        {
-            "dataset": "dai22dai/video",
-            "media_key": lambda row: row["image"],
-            "approximate_max_sample_count_to_obtain": 200,
-            "generate_samples_kwargs": {
-                "media_type": MediaType.IMAGE,
-                "use_vlm_to_check_for_person": False,
-                "keep_original_vqa_pair": False,
-            },
-        },
-        {
-            "dataset": "visogender",
-            "dataset_obtain_strategy": load_visogender,
-            "dataset_obtain_kwargs": {
-                "urls": [
-                    "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
-                    "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
-                    "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
-                ],
-            },
-            "media_key": "URL type (Type NA if can't find)",
-            "approximate_max_sample_count_to_obtain": 200,
-            "generate_samples_kwargs": {
-                "media_type": MediaType.IMAGE,
-                "use_vlm_to_check_for_person": False,
-            }
-        },
-        {
+            "dataset": "",
 
         },
+        # {
+        #     "dataset": "lmms-lab/ActivityNetQA",
+        #     "media_key": lambda row: row["video_name"],
+        #     "question_key": "question",
+        #     "answer_key": "answer",
+        #     "approximate_max_sample_count_to_obtain": 200,
+        # },
+        # {
+        #     "dataset": "lmms-lab/VideoDetailCaption",
+        #     "media_key": lambda row: row["video_name"],
+        #     "question_key": "question",
+        #     "answer_key": "answer",
+        #     "approximate_max_sample_count_to_obtain": 200,
+        # },
+        
+        #####################################################
+        # Images
+        #####################################################
+
+        # {
+        #     "dataset": "dai22dai/video",
+        #     "media_key": lambda row: row["image"],
+        #     "approximate_max_sample_count_to_obtain": 200,
+        #     "generate_samples_kwargs": {
+        #         "media_type": MediaType.IMAGE,
+        #         "use_vlm_to_check_for_person": False,
+        #         "keep_original_vqa_pair": False,
+        #     },
+        # },
+        # {
+        #     "dataset": "visogender",
+        #     "dataset_obtain_strategy": load_visogender,
+        #     "dataset_obtain_kwargs": {
+        #         "urls": [
+        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
+        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
+        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
+        #         ],
+        #     },
+        #     "media_key": "URL type (Type NA if can't find)",
+        #     "approximate_max_sample_count_to_obtain": 200,
+        #     "generate_samples_kwargs": {
+        #         "media_type": MediaType.IMAGE,
+        #         "use_vlm_to_check_for_person": False,
+        #     }
+        # },
     ]
 
     vlm = Phi_3_5_Multimodal()
@@ -323,7 +392,8 @@ def main():
     for dataset_kwargs in datasets_to_curate:
         curator.curate_dataset(
             generate_samples_strategy=generate_samples_for_vqa_pair,
-            **dataset_kwargs)
+            **dataset_kwargs
+        )
 
 if __name__ == "__main__":
     main()

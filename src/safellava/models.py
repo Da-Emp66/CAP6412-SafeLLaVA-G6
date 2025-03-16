@@ -34,9 +34,9 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
         ]
 
         prompt = self.processor.tokenizer.apply_chat_template(
-        messages, 
-        tokenize=False, 
-        add_generation_prompt=True
+            messages,
+            tokenize=False, 
+            add_generation_prompt=True
         )
 
         inputs = self.processor(prompt, frames, return_tensors="pt").to(self.model.device) 
