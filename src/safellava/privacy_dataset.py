@@ -4,7 +4,7 @@ from datasets import load_dataset
 import kagglehub
 import tarfile
 import yaml
-from safellava.dataset_fabrication import AnswerType, DataCuratorConstruct, VQADataPoint
+from safellava.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models import Phi_3_5_Multimodal
 from safellava.utils import MediaType, load_online_files
@@ -389,7 +389,7 @@ def main():
     ]
 
     vlm = Phi_3_5_Multimodal()
-    curator = DataCuratorConstruct(vlm)
+    curator = VQADataCuratorConstruct(vlm)
 
     for dataset_kwargs in datasets_to_curate:
         curator.curate_dataset(

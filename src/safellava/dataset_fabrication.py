@@ -1,11 +1,14 @@
 from enum import Enum
 import os
+import shutil
 from typing import Any, Callable, Dict, NamedTuple, Optional, Union
+import warnings
 from datasets import load_dataset
 
 import pandas as pd
 
 from safellava.interfaces import BaseMultiModalLanguageModel
+from safellava.utils import MediaType, get_media_type
 
 class AnswerType(Enum):
     NORMAL = 0
@@ -18,7 +21,7 @@ class VQADataPoint(NamedTuple):
     answer: str
     answer_type: AnswerType
 
-class DataCuratorConstruct:
+class VQADataCuratorConstruct:
     def __init__(self, vlm: BaseMultiModalLanguageModel):
         self.vlm = vlm
 
@@ -27,7 +30,11 @@ class DataCuratorConstruct:
         dataset: str,
         dataset_obtain_strategy: Callable = load_dataset,
         dataset_obtain_kwargs: Dict[str, Any] = {},
-        destination_csv: Optional[str] = None,
+        destination_directory: Optional[str] = None,
+        destination_csv: Optional[str] = os.path.join("{destination_directory}", "datapoints.csv"),
+        images_directory: Optional[str] = os.path.join("{destination_directory}", "images"),
+        videos_directory: Optional[str] = os.path.join("{destination_directory}", "videos"),
+        unknown_media_directory: Optional[str] = os.path.join("{destination_directory}", "unknown_media"),
         media_key: Optional[Union[Callable, str]] = None,
         question_key: Optional[Union[Callable, str]] = None,
         answer_key: Optional[Union[Callable, str]] = None,
@@ -46,7 +53,11 @@ class DataCuratorConstruct:
             dataset (str): HuggingFace dataset ID or dataset name
             dataset_obtain_strategy (Callable, optional): _description_. Defaults to load_dataset.
             dataset_obtain_kwargs (Dict[str, Any], optional): _description_. Defaults to {}.
-            destination_csv (Optional[str], optional): Path to CSV file to offload datapoints. Defaults to f"{dataset}_curated.csv".replace('/', "_").
+            destination_directory (Optional[str], optional): Path to directory to store curated data. Defaults to f"./{dataset}_curated".replace('/', "_").
+            destination_csv (Optional[str], optional): Path to CSV file to offload datapoints. Defaults to os.path.join("{destination_directory}", "datapoints.csv").
+            images_directory (Optional[str], optional): Path to directory to store curated images. Defaults to os.path.join("{destination_directory}", "images").
+            videos_directory (Optional[str], optional): Path to directory to store curated videos. Defaults to os.path.join("{destination_directory}", "videos").
+            unknown_media_directory (Optional[str], optional): Path to directory to store curated media that was not identified as an image or video. Defaults to os.path.join("{destination_directory}", "unknown_media").
             media_key (Optional[Union[Callable, str]], optional): _description_
             question_key (Optional[Union[Callable, str]], optional): _description_
             answer_key (Optional[Union[Callable, str]], optional): _description_
@@ -59,17 +70,25 @@ class DataCuratorConstruct:
             max_rows_of_original_dataset_to_consider (Optional[int], optional): _description_. Defaults to None.
             approximate_max_sample_count_to_obtain (Optional[int], optional): _description_. Defaults to None.
         """
+        
+        # Identify the directories 
+        if destination_directory is None:
+            destination_directory = f"./{dataset}_curated".replace('/', "_")
 
-        if destination_csv is None:
-            destination_csv = f"{dataset}_curated.csv".replace('/', "_")
+        # Formalize paths to curation results
+        destination_csv = destination_csv.replace("{destination_directory}", destination_directory.rstrip('/'))
+        images_directory = images_directory.replace("{destination_directory}", destination_directory.rstrip('/'))
+        videos_directory = videos_directory.replace("{destination_directory}", destination_directory.rstrip('/'))
+        unknown_media_directory = unknown_media_directory.replace("{destination_directory}", destination_directory.rstrip('/'))
 
+        # Ensure the method for generating samples has been set
         if generate_samples_strategy is None:
             raise ValueError("Argument `generate_samples_strategy` for `curate_dataset` must not be `None`.")
 
         # Obtain the HuggingFace or other dataset
         loaded_dataset = dataset_obtain_strategy(
             dataset,
-            **dataset_obtain_kwargs
+            **dataset_obtain_kwargs,
         )
 
         # Prepare variables
@@ -146,6 +165,17 @@ class DataCuratorConstruct:
 
             # Add to the number of samples we have obtained
             num_samples_obtained += len(samples)
+
+            # Copy the media into the proper directory
+            media_type = get_media_type(media)
+
+            if media_type == MediaType.IMAGE:
+                shutil.copy(media, images_directory)
+            elif media_type == MediaType.VIDEO:
+                shutil.copy(media, videos_directory)
+            else:
+                warnings.warn(f"Media type of {media} unknown.")
+                shutil.copy(media, unknown_media_directory)
 
             # Offload the samples to the destination CSV file
             pd.DataFrame(samples, columns=columns).to_csv(

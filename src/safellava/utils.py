@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple, TypeAlias, Union
 from urllib.parse import urlparse
 import urllib.request
 import uuid
+import warnings
 from PIL import Image
 import cv2
 import numpy as np
@@ -131,6 +132,9 @@ def download_youtube_video(video_id: str, download_folder: str = ".") -> str:
 # Images, Videos, and Other Media
 #####################################################
 
+IMAGE_EXTENSIONS = set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'])
+VIDEO_EXTENSIONS = set(['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm'])
+
 class MediaType(Enum):
     IMAGE = "image"
     VIDEO = "video"
@@ -164,11 +168,11 @@ def open_images(media, verbose=False):
                 if isinstance(media[0][0], str):
                     media = [[_open_image(image) for image in image_list] for image_list in media]
                 elif verbose:
-                    print(f"{media} is not in a supported format. You must have a preprocessing function defined or a non-standard model for this to work.")
+                    warnings.warn(f"{media} is not in a supported format. You must have a preprocessing function defined or a non-standard model for this to work.")
     elif isinstance(media, str):
         media = _open_image(media)
     elif verbose:
-        print(f"{media} is not in a supported format. You must have a preprocessing function defined or a non-standard model for this to work.")
+        warnings.warn(f"{media} is not in a supported format. You must have a preprocessing function defined or a non-standard model for this to work.")
 
     return media
 
@@ -219,10 +223,21 @@ def load_video(video: Any, sample_rate: int = 3) -> Tuple[List[Image.Image], int
     
     raise TypeError(f"`{video}` is not of an acceptable type. It should be a `str` or a `PIL.Image`.")
 
+def get_media_type(media_filepath: str):
+    if media_filepath.endswith(tuple(IMAGE_EXTENSIONS)):
+        return MediaType.IMAGE
+    elif media_filepath.endswith(tuple(VIDEO_EXTENSIONS)):
+        return MediaType.VIDEO
+    else:
+        warnings.warn(f"`{Path(media_filepath).suffix}` not supported. The current function may fail.")
+        return MediaType.IMAGE_OR_VIDEO
+
 def load_media(media_filepath: str, video_sample_rate: int) -> Tuple[MediaType, List[Image.Image], int]:
-    if media_filepath.endswith(tuple(['.jpg', '.jpeg', '.png', '.webp'])):
-        return (MediaType.IMAGE, [load_image(media_filepath)], 1)
-    elif media_filepath.endswith(tuple(['.mp4'])):
-        return (MediaType.VIDEO, *load_video(media_filepath, sample_rate=video_sample_rate))
+    media_type = get_media_type(media_filepath)
+
+    if media_type == MediaType.IMAGE:
+        return (media_type, [load_image(media_filepath)], 1)
+    elif media_type == MediaType.VIDEO:
+        return (media_type, *load_video(media_filepath, sample_rate=video_sample_rate))
     else:
         raise NotImplementedError(f"`{Path(media_filepath).suffix}` not supported.")
