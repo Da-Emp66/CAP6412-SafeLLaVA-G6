@@ -136,6 +136,8 @@ def load_narrated_instruction_videos(
 ):
     pass
 
+## Need to make loader for https://coin-dataset.github.io/
+
 #####################################################
 # Sample Generation
 #####################################################
