@@ -398,6 +398,7 @@ def main():
         {
             "dataset": "hollywood2",
             "media_key": "video",
+            "dataset_obtain_strategy": load_hollywood2,
             "dataset_obtain_kwargs": {
                 "urls": [
                     "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz"

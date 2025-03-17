@@ -33,6 +33,7 @@ dependencies = [
     "pytube>=15.0.0",
     "kagglehub>=0.3.10",
     "ms-swift>=1.4.0",
+    "qwen-vl-utils>=0.0.10",
 ]
 
 [tool.uv]

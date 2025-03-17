@@ -1,6 +1,7 @@
 import argparse
 from typing import Optional
-from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers import Qwen2VLForConditionalGeneration, AutoModelForCausalLM, AutoProcessor
+from qwen_vl_utils import process_vision_info
 
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
@@ -11,24 +12,24 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
 
         # Note: set _attn_implementation='eager' if you don't have flash_attn installed
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_id, 
-            device_map="cuda", 
-            trust_remote_code=True, 
-            torch_dtype="auto", 
-            _attn_implementation='flash_attention_2'    
+            self.model_id,
+            device_map="cuda",
+            trust_remote_code=True,
+            torch_dtype="auto",
+            _attn_implementation=None
         )
 
         # for best performance, use num_crops=4 for multi-frame, num_crops=16 for single-frame.
         self.processor = AutoProcessor.from_pretrained(
-            self.model_id, 
-            trust_remote_code=True, 
+            self.model_id,
+            trust_remote_code=True,
             num_crops=4
         )
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         _media_type, frames, num_frames = load_media(
             video,
-            video_sample_rate=int(get_video_length_seconds(video))
+            video_sample_rate=1.0,
         )
 
         messages = [
@@ -43,15 +44,15 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
 
         inputs = self.processor(prompt, frames, return_tensors="pt").to(self.model.device) 
 
-        generation_args = { 
-            "max_new_tokens": 1000, 
-            "temperature": 0.0, 
-            "do_sample": False, 
-        } 
+        generation_args = {
+            "max_new_tokens": 1000,
+            "temperature": 0.0,
+            "do_sample": False,
+        }
 
         generate_ids = self.model.generate(
-            **inputs, 
-            eos_token_id=self.processor.tokenizer.eos_token_id, 
+            **inputs,
+            eos_token_id=self.processor.tokenizer.eos_token_id,
             **generation_args,
         )
 
@@ -62,6 +63,92 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
         clean_up_tokenization_spaces=False)[0]
 
         return response
+    
+
+class Qwen2_VL_Instruct(BaseMultiModalLanguageModel):
+    def __init__(self, model_id: str = "Qwen/Qwen2-VL-2B-Instruct"):
+        self.model_id = model_id
+
+        self.model = Qwen2VLForConditionalGeneration.from_pretrained(
+            self.model_id,
+            torch_dtype="auto",
+            device_map="auto",
+        )
+
+        # We recommend enabling flash_attention_2 for better acceleration and memory saving, especially in multi-image and video scenarios.
+        # model = Qwen2VLForConditionalGeneration.from_pretrained(
+        #     "Qwen/Qwen2-VL-2B-Instruct",
+        #     torch_dtype=torch.bfloat16,
+        #     attn_implementation="flash_attention_2",
+        #     device_map="auto",
+        # )
+
+        self.processor = AutoProcessor.from_pretrained(
+            self.model_id
+        )
+
+    def __call__(self, video: Optional[str] = None, text: Optional[str] = None):
+        sample_rate = 1.0
+        
+        _media_type, frames, num_frames = load_media(
+            video,
+            video_sample_rate=sample_rate,
+        )
+
+        # Messages containing a images list as a video and a text query
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "video",
+                        "video": frames,
+                        "fps": sample_rate,
+                    },
+                    {"type": "text", "text": text},
+                ],
+            }
+        ]
+        # # Messages containing a video and a text query
+        # messages = [
+        #     {
+        #         "role": "user",
+        #         "content": [
+        #             {
+        #                 "type": "video",
+        #                 "video": video,
+        #                 "max_pixels": 360 * 420,
+        #                 "fps": sample_rate,
+        #             },
+        #             {"type": "text", "text": text},
+        #         ],
+        #     }
+        # ]
+
+        # Preparation for inference
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self.processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        )
+        inputs = inputs.to("cuda")
+
+        # Inference
+        generated_ids = self.model.generate(**inputs, max_new_tokens=128)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_text = self.processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
+        
+        return output_text
 
 
 def example_instantiation_and_inference(
@@ -70,7 +157,8 @@ def example_instantiation_and_inference(
     prompt: Optional[str] = None,
 ):
     # print(configuration_filename, flush=True)
-    vlm = Phi_3_5_Multimodal()
+    # vlm = Phi_3_5_Multimodal()
+    vlm = Qwen2_VL_Instruct()
 
     if video is None:
         video = input("Path to video >")
@@ -78,7 +166,7 @@ def example_instantiation_and_inference(
     if prompt is None:
         prompt = input("Prompt: ")
 
-    output = vlm(prompt, videos=[video])
+    output = vlm(video, prompt)
     print(output, flush=True)
 
 
