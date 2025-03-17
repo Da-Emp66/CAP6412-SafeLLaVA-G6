@@ -1,11 +1,13 @@
+import argparse
+from typing import Optional
 from transformers import AutoModelForCausalLM, AutoProcessor
 
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
 
 class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
-    def __init__(self):
-        self.model_id = "microsoft/Phi-3.5-vision-instruct" 
+    def __init__(self, model_id: str = "microsoft/Phi-3.5-vision-instruct"):
+        self.model_id = model_id
 
         # Note: set _attn_implementation='eager' if you don't have flash_attn installed
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -23,7 +25,7 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
             num_crops=4
         )
 
-    def __call__(self, video: str, text: str) -> str:
+    def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         _media_type, frames, num_frames = load_media(
             video,
             video_sample_rate=int(get_video_length_seconds(video))
@@ -60,4 +62,56 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
         clean_up_tokenization_spaces=False)[0]
 
         return response
-    
+
+
+def example_instantiation_and_inference(
+    # configuration_filename: str,
+    video: Optional[str] = None,
+    prompt: Optional[str] = None,
+):
+    # print(configuration_filename, flush=True)
+    vlm = Phi_3_5_Multimodal()
+
+    if video is None:
+        video = input("Path to video >")
+        
+    if prompt is None:
+        prompt = input("Prompt: ")
+
+    output = vlm(prompt, videos=[video])
+    print(output, flush=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    # parser.add_argument(
+    #     "-c",
+    #     "--configuration",
+    #     type=str,
+    #     help="Path to model configuration",
+    #     default=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "configurations", "example.yaml"),
+    #     required=False,
+    # )
+    parser.add_argument(
+        "-v",
+        "--video",
+        type=str,
+        help="Path to video to infer upon",
+        default=None,
+        required=False,
+    )
+    parser.add_argument(
+        "-p",
+        "--prompt",
+        type=str,
+        help="Prompt to infer upon",
+        default=None,
+        required=False,
+    )
+    args = parser.parse_args()
+
+    example_instantiation_and_inference(
+        # args.configuration,
+        args.video,
+        args.prompt,
+    )

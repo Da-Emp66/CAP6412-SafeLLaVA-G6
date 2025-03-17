@@ -16,7 +16,7 @@ from safellava.utils import MediaType, load_online_files
 #####################################################
 
 PROTECTION_PROMPT = """DO NOT describe the person or people in the {media} by anything other than `person`, `people`, or that person's or persons' occupation(s).
-Keep the overall {media} description detailed while excluding information about anyone in the {media}'s age, sex, gender, race, hair color, hairstyle, facial or
+Keep the overall {media} description detailed while excluding information about anyone in the {media}'s name, age, sex, gender, race, hair color, hairstyle, facial or
 other physical characteristics."""
 
 DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
@@ -27,6 +27,7 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "gender",
     "hair color",
     "hairstyle",
+    "facial or other physical characteristics",
     "uniquely identifiable information",
 ]
 
@@ -90,6 +91,7 @@ def load_hollywood2(
     download_dir: Optional[str] = None,
     filename_filter: Optional[List[str]] = None,
 ):
+    # Ensure initial variables and directories are prepared
     if download_dir is None:
         download_dir = os.path.join("data_downloads", dataset_name)
 
@@ -98,29 +100,39 @@ def load_hollywood2(
     output_csv = os.path.join(download_dir, f"{dataset_name}.csv")
     videos = []
 
+    output_csv_exists = os.path.join(output_csv)
+
+    # Download and extract the files
     files = load_online_files(urls, downloads_dir=download_dir)
     for file in files:
         unzipped_output_dir = file.rstrip(".tar.gz")
         opened_tar = tarfile.open(file)
         if not os.path.exists(unzipped_output_dir):
             opened_tar.extractall(unzipped_output_dir)
-        videos_dir = os.path.join(unzipped_output_dir, "Hollywood2", "AVIClips")
-        current_videos = os.listdir(videos_dir)
-        current_videos = [os.path.join(videos_dir, video) for video in current_videos]
-        videos += current_videos
 
-    if filename_filter is not None:
-        videos = list(
-            filter(
-                lambda video_filename: (
-                    not any([(filtered_string in video_filename) for filtered_string in filename_filter])
-                ),
-                videos
+        if not output_csv_exists:
+            # Gather video paths to make the dataset
+            videos_dir = os.path.join(unzipped_output_dir, "Hollywood2", "AVIClips")
+            current_videos = os.listdir(videos_dir)
+            current_videos = [os.path.join(videos_dir, video) for video in current_videos]
+            videos += current_videos
+
+    if not output_csv_exists:
+        # Filter the necessary videos
+        if filename_filter is not None:
+            videos = list(
+                filter(
+                    lambda video_filename: (
+                        not any([(filtered_string in video_filename) for filtered_string in filename_filter])
+                    ),
+                    videos
+                )
             )
-        )
 
-    pd.DataFrame({ "video": videos }).to_csv(output_csv)
+        # Write the dataset CSV
+        pd.DataFrame({ "video": videos }).to_csv(output_csv)
 
+    # Return the dataset loader
     return load_dataset("csv", data_files=[output_csv])
 
 def load_video_story(
@@ -135,6 +147,8 @@ def load_video_story(
         opened_tar = tarfile.open(file)
         if not os.path.exists(output_dir):
             opened_tar.extractall(output_dir)
+    
+    raise NotImplementedError()
 
 def load_vatex_video_captioning(
     _dataset_name: str = "vatex",
@@ -143,7 +157,7 @@ def load_vatex_video_captioning(
     ],
 ):
     files = load_online_files(urls)
-    
+    raise NotImplementedError()
     
 def load_youtube_pose(
     _dataset_name: str = "youtube-pose",
@@ -151,6 +165,7 @@ def load_youtube_pose(
 ):
     path = kagglehub.dataset_download(kaggle_handle)
     print("Path to dataset files:", path)
+    raise NotImplementedError()
 
 def load_condensed_movies(
     _dataset_name: str = "condensed_movies",
@@ -162,6 +177,7 @@ def load_condensed_movies(
     ],
 ):
     files = load_online_files(urls)
+    raise NotImplementedError()
 
 def load_narrated_instruction_videos(
     _dataset_name: str = "narrated_instruction_videos",
@@ -170,6 +186,7 @@ def load_narrated_instruction_videos(
     ],
 ):
     files = load_online_files(urls)
+    raise NotImplementedError()
 
 def load_coin_dataset(
     _dataset_name: str = "coin_dataset",
@@ -177,10 +194,8 @@ def load_coin_dataset(
         "https://raw.githubusercontent.com/coin-dataset/annotations/refs/heads/master/COIN.json",
     ],
 ):
-    pass
-    
-
-## Need to make loader for https://coin-dataset.github.io/
+    # https://coin-dataset.github.io/
+    raise NotImplementedError()
 
 #####################################################
 # Sample Generation
@@ -381,8 +396,19 @@ def main():
         #####################################################
 
         {
-            "dataset": "",
-
+            "dataset": "hollywood2",
+            "media_key": "video",
+            "dataset_obtain_kwargs": {
+                "urls": [
+                    "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz"
+                ],
+                "filename_filter": [
+                    "autoauto"
+                ],
+            },
+            "generate_samples_kwargs": {
+                "use_vlm_to_check_for_person": False,
+            },
         },
         # {
         #     "dataset": "lmms-lab/ActivityNetQA",
