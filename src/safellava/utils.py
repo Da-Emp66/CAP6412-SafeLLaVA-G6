@@ -3,7 +3,7 @@ from io import BytesIO, StringIO
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryFile
-from typing import Any, Dict, List, Tuple, TypeAlias, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeAlias, Union
 from urllib.parse import urlparse
 import urllib.request
 import uuid
@@ -64,6 +64,7 @@ def convert_string_to_file(content: str, target: FileType, **kwargs: Dict[str, A
 def load_online_files(
         urls: List[str],
         target: FileType = FileType.REAL_FILE,
+        future_filenames: Optional[List[str]] = None,
         downloads_dir: str = "./data_downloads",
         skip_if_exists: bool = True,
     ) -> List[SomeFileType]:
@@ -72,20 +73,28 @@ def load_online_files(
     Args:
         urls (List[str]): _description_
         target (FileType, optional): _description_. Defaults to FileType.REAL_FILE.
+        future_filenames (Optional[List[str]], optional): _description_. Defaults to None.
         downloads_dir (str, optional): _description_. Defaults to "./data_downloads".
         skip_if_exists (bool, optional): _description_. Defaults to True.
 
     Returns:
         List[SomeFileType]: _description_
     """
+    if future_filenames is not None:
+        assert len(urls) == len(future_filenames)
 
     files = []
 
     for idx, url in enumerate(urls):
         parsed_url = urlparse(url)
-        future_filename = os.path.join(downloads_dir, os.path.basename(parsed_url.path))
+        if future_filenames is None:
+            future_filename = os.path.join(downloads_dir, os.path.basename(parsed_url.path))
+        else:
+            future_filename = future_filenames[idx]
 
-        if not os.path.exists(future_filename) or (os.path.exists(future_filename) and not skip_if_exists):
+        if os.path.exists(future_filename) and skip_if_exists:
+            print(f"Skipping `{url}` download as it already exists at `{future_filename}`")
+        else:
             if target == FileType.REAL_FILE:
                 os.makedirs(downloads_dir, exist_ok=True)
 
@@ -106,12 +115,12 @@ def load_online_files(
                 urllib.request.urlretrieve(url, future_filename)
             else:
                 print(f"Scheme `{parsed_url.scheme}` not supported. Please use `http`, `https`, or `ftp`.")
-        else:
-            print(f"Skipping `{url}` download as it already exists at `{future_filename}`")
+                
+        files.append(future_filename)
 
     return files
 
-def download_youtube_video(video_id: str, download_folder: str = ".") -> str:
+def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube: bool = True) -> str:
     """Download a Youtube video based on its video ID
 
     Args:
@@ -120,13 +129,20 @@ def download_youtube_video(video_id: str, download_folder: str = ".") -> str:
     Returns:
         str: _description_
     """
-    yt = pytube.YouTube(f"https://www.youtube.com/watch?v={video_id}")
-    stream = yt.streams.get_highest_resolution()
-    filename = f"{stream.default_filename.replace('.')[:-1]}.mp4"
-    return stream.download(
-        output_path=download_folder,
-        filename=filename,
-    )
+    if use_pytube:
+        yt = pytube.YouTube(f"https://www.youtube.com/watch?v={video_id}")
+        stream = yt.streams.get_highest_resolution()
+        filename = f"{stream.default_filename.replace('.')[:-1]}.mp4"
+        return stream.download(
+            output_path=download_folder,
+            filename=filename,
+        )
+    else:
+        return load_online_files(
+            urls=[f"https://www.youtube.com/embed/{video_id}"],
+            downloads_dir=download_folder,
+            future_filename=[f"{video_id}.mp4"],
+        )[0]
 
 #####################################################
 # Images, Videos, and Other Media

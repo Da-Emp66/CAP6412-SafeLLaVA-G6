@@ -1,8 +1,10 @@
+import os
 import random
 from typing import List, Optional, Set
 from datasets import load_dataset
 import kagglehub
 import tarfile
+import pandas as pd
 import yaml
 from safellava.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
@@ -77,19 +79,49 @@ def load_visogender(
     ],
 ):
     files = load_online_files(urls)
-    return load_dataset("csv", data_files=files)
+    return load_dataset("tsv", data_files=files)
 
 def load_hollywood2(
-    _dataset_name: str = "hollywood2",
+    dataset_name: str = "hollywood2",
     urls: List[str] = [
         "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz",
         "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-scenes.tar.gz",
     ],
+    download_dir: Optional[str] = None,
+    filename_filter: Optional[List[str]] = None,
 ):
-    files = load_online_files(urls)
+    if download_dir is None:
+        download_dir = os.path.join("data_downloads", dataset_name)
+
+    os.makedirs(download_dir, exist_ok=True)
+
+    output_csv = os.path.join(download_dir, f"{dataset_name}.csv")
+    videos = []
+
+    files = load_online_files(urls, downloads_dir=download_dir)
     for file in files:
-        tarfile.open(file).extractall(file.strip(".tar.gz"))
-    raise NotImplementedError()
+        unzipped_output_dir = file.rstrip(".tar.gz")
+        opened_tar = tarfile.open(file)
+        if not os.path.exists(unzipped_output_dir):
+            opened_tar.extractall(unzipped_output_dir)
+        videos_dir = os.path.join(unzipped_output_dir, "Hollywood2", "AVIClips")
+        current_videos = os.listdir(videos_dir)
+        current_videos = [os.path.join(videos_dir, video) for video in current_videos]
+        videos += current_videos
+
+    if filename_filter is not None:
+        videos = list(
+            filter(
+                lambda video_filename: (
+                    not any([(filtered_string in video_filename) for filtered_string in filename_filter])
+                ),
+                videos
+            )
+        )
+
+    pd.DataFrame({ "video": videos }).to_csv(output_csv)
+
+    return load_dataset("csv", data_files=[output_csv])
 
 def load_video_story(
     _dataset_name: str = "video_story",
@@ -99,8 +131,10 @@ def load_video_story(
 ):
     files = load_online_files(urls)
     for file in files:
-        tarfile.open(file).extractall(file.strip(".tar.gx"))
-    raise NotImplementedError()
+        output_dir = file.rstrip(".tar.gx")
+        opened_tar = tarfile.open(file)
+        if not os.path.exists(output_dir):
+            opened_tar.extractall(output_dir)
 
 def load_vatex_video_captioning(
     _dataset_name: str = "vatex",
@@ -108,7 +142,8 @@ def load_vatex_video_captioning(
         "https://eric-xw.github.io/vatex-website/data/vatex_training_v1.0.json",
     ],
 ):
-    pass
+    files = load_online_files(urls)
+    
     
 def load_youtube_pose(
     _dataset_name: str = "youtube-pose",
@@ -118,7 +153,7 @@ def load_youtube_pose(
     print("Path to dataset files:", path)
 
 def load_condensed_movies(
-    _dataset_name: str,
+    _dataset_name: str = "condensed_movies",
     urls: List[str] = [
         "https://raw.githubusercontent.com/m-bain/CondensedMovies/refs/heads/master/data/metadata/clips.csv",
         "https://raw.githubusercontent.com/m-bain/CondensedMovies/refs/heads/master/data/metadata/descriptions.csv",
@@ -126,15 +161,24 @@ def load_condensed_movies(
         "https://github.com/m-bain/CondensedMovies/blob/master/data/metadata/movie_info.csv",
     ],
 ):
-    pass
+    files = load_online_files(urls)
 
 def load_narrated_instruction_videos(
-    _dataset_name: str,
+    _dataset_name: str = "narrated_instruction_videos",
     urls: List[str] = [
         "https://www.di.ens.fr/willow/research/instructionvideos/data_new.tar.gz",
     ],
 ):
+    files = load_online_files(urls)
+
+def load_coin_dataset(
+    _dataset_name: str = "coin_dataset",
+    urls: List[str] = [
+        "https://raw.githubusercontent.com/coin-dataset/annotations/refs/heads/master/COIN.json",
+    ],
+):
     pass
+    
 
 ## Need to make loader for https://coin-dataset.github.io/
 

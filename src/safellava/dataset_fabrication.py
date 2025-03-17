@@ -71,7 +71,7 @@ class VQADataCuratorConstruct:
             approximate_max_sample_count_to_obtain (Optional[int], optional): _description_. Defaults to None.
         """
         
-        # Identify the directories 
+        # Identify the default directory to place results
         if destination_directory is None:
             destination_directory = f"./{dataset}_curated".replace('/', "_")
 
