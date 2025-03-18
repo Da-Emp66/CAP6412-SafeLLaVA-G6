@@ -73,7 +73,7 @@ class VQADataCuratorConstruct:
         
         # Identify the default directory to place results
         if destination_directory is None:
-            destination_directory = f"./{dataset}_curated".replace('/', "_")
+            destination_directory = "./" + (f"{dataset}_curated".replace('/', "_"))
 
         # Formalize paths to curation results
         destination_csv = destination_csv.replace("{destination_directory}", destination_directory.rstrip('/'))
@@ -89,12 +89,13 @@ class VQADataCuratorConstruct:
         loaded_dataset = dataset_obtain_strategy(
             dataset,
             **dataset_obtain_kwargs,
-        )
+        )["train"]
 
         # Prepare variables
         num_samples_obtained = 0
         num_rows_already_processed = 0
         columns = list(VQADataPoint._fields) + ["original_dataset_index"]
+        current_df = pd.DataFrame()
 
         # Check if the destination_csv already exists
         if os.path.exists(destination_csv):
@@ -109,77 +110,90 @@ class VQADataCuratorConstruct:
                 # off on in the current CSV file is the row we should start at in the current
                 # dataset.
                 previous_df = pd.read_csv(destination_csv, sep='|')
-                num_rows_already_processed = previous_df.iloc[-1]["original_dataset_index"] + 1
+                num_rows_already_processed = int(previous_df.iloc[-1]["original_dataset_index"]) + 1
                 num_samples_obtained = len(previous_df.index)
-        
+                current_df = previous_df
+                print(f"Found current dataframe at `{destination_csv}`. Resuming at dataset index `{num_rows_already_processed}`.")
+
         # For all the samples in the HuggingFace or other dataset
         for idx, row in enumerate(loaded_dataset):
-            # If we are past the maximum number of rows to consider
-            # or have generated enough samples given the approximate
-            # limit, break from iteration
-            if max_rows_of_original_dataset_to_consider is not None and idx >= max_rows_of_original_dataset_to_consider or \
-                approximate_max_sample_count_to_obtain is not None and num_samples_obtained >= approximate_max_sample_count_to_obtain:
-                break
+            try:
+                # If we are past the maximum number of rows to consider
+                # or have generated enough samples given the approximate
+                # limit, break from iteration
+                if max_rows_of_original_dataset_to_consider is not None and idx >= max_rows_of_original_dataset_to_consider or \
+                    approximate_max_sample_count_to_obtain is not None and num_samples_obtained >= approximate_max_sample_count_to_obtain:
+                    break
 
-            # If we are resuming, continue at indices we have already obtained samples for
-            if resume_enabled and idx < num_rows_already_processed:
-                continue
+                # If we are resuming, continue at indices we have already obtained samples for
+                if resume_enabled and idx < num_rows_already_processed:
+                    continue
 
-            # Variables for this sampling round
-            media = None
-            question = None
-            answer = None
+                # Variables for this sampling round
+                media = None
+                question = None
+                answer = None
 
-            # Obtain the media
-            if isinstance(media_key, str):
-                media = row[media_key]
-            elif media_key is not None:
-                media = media_key(row)
-            else:
-                media = default_media
-            
-            # Obtain the question
-            if isinstance(question_key, str):
-                question = row[question_key]
-            elif question_key is not None:
-                question = question_key(row)
-            else:
-                question = default_question
-            
-            # Obtain the answer
-            if isinstance(answer_key, str):
-                answer = row[answer_key]
-            elif answer_key is not None:
-                answer = answer_key(row)
-            else:
-                answer = default_answer
+                # Obtain the media
+                if isinstance(media_key, str):
+                    media = row[media_key]
+                elif media_key is not None:
+                    media = media_key(row)
+                else:
+                    media = default_media
+                
+                # Obtain the question
+                if isinstance(question_key, str):
+                    question = row[question_key]
+                elif question_key is not None:
+                    question = question_key(row)
+                else:
+                    question = default_question
+                
+                # Obtain the answer
+                if isinstance(answer_key, str):
+                    answer = row[answer_key]
+                elif answer_key is not None:
+                    answer = answer_key(row)
+                else:
+                    answer = default_answer
 
-            # Generate the Media-Text pair samples for this row
-            samples = generate_samples_strategy(
-                self.vlm,
-                media,
-                question,
-                answer,
-                **generate_samples_kwargs,
-            )
+                # Generate the Media-Text pair samples for this row
+                samples = generate_samples_strategy(
+                    self.vlm,
+                    media,
+                    question,
+                    answer,
+                    **generate_samples_kwargs,
+                )
 
-            # Add to the number of samples we have obtained
-            num_samples_obtained += len(samples)
+                samples = [(list(sample[:-1]) + [sample[-1].value] + [idx]) for sample in samples]
 
-            # Copy the media into the proper directory
-            media_type = get_media_type(media)
+                # Add to the number of samples we have obtained
+                num_samples_obtained += len(samples)
 
-            if media_type == MediaType.IMAGE:
-                shutil.copy(media, images_directory)
-            elif media_type == MediaType.VIDEO:
-                shutil.copy(media, videos_directory)
-            else:
-                warnings.warn(f"Media type of {media} unknown.")
-                shutil.copy(media, unknown_media_directory)
+                # Copy the media into the proper directory
+                media_type = get_media_type(media)
 
-            # Offload the samples to the destination CSV file
-            pd.DataFrame(samples, columns=columns).to_csv(
-                destination_csv,
-                sep='|',
-                mode='a',
-            )
+                if media_type == MediaType.IMAGE:
+                    os.makedirs(images_directory, exist_ok=True)
+                    shutil.copy(media, images_directory)
+                elif media_type == MediaType.VIDEO:
+                    os.makedirs(videos_directory, exist_ok=True)
+                    shutil.copy(media, videos_directory)
+                else:
+                    warnings.warn(f"Media type of {media} unknown.")
+                    os.makedirs(unknown_media_directory, exist_ok=True)
+                    shutil.copy(media, unknown_media_directory)
+
+                # Add the new samples
+                current_df = pd.concat([current_df, pd.DataFrame(samples, columns=columns)], ignore_index=True)
+
+                # Offload the samples to the destination CSV file
+                current_df.to_csv(
+                    destination_csv,
+                    sep='|',
+                )
+            except Exception as e:
+                print(f"Error `{e.__class__}` at dataset index `{idx}`. Skipping...")
+                

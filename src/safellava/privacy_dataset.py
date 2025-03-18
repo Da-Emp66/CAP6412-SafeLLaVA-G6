@@ -1,5 +1,6 @@
 import os
 import random
+import re
 from typing import List, Optional, Set
 from datasets import load_dataset
 import kagglehub
@@ -8,29 +9,31 @@ import pandas as pd
 import yaml
 from safellava.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
-from safellava.models import Phi_3_5_Multimodal
+from safellava.models import Qwen2_VL_Instruct
 from safellava.utils import MediaType, load_online_files
 
 #####################################################
 # Privacy Globals
 #####################################################
 
-PROTECTION_PROMPT = """DO NOT describe the person or people in the {media} by anything other than `person`, `people`, or that person's or persons' occupation(s).
-Keep the overall {media} description detailed while excluding information about anyone in the {media}'s name, age, sex, gender, race, hair color, hairstyle, facial or
-other physical characteristics."""
+# Protection
+PROTECTION_PROMPT = """DO NOT describe the person or people in the {media} by anything other than `person`, `people`, or that person's or persons' occupation(s). Keep the overall {media} description detailed while excluding information about anyone in the {media}'s name, age, sex, gender, pronouns, race, hair color, hairstyle, facial or other physical characteristics."""
 
+# Attributes
 DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "name",
     "age",
     "race",
     "sex",
     "gender",
+    "pronouns",
     "hair color",
     "hairstyle",
     "facial or other physical characteristics",
     "uniquely identifiable information",
 ]
 
+# Keywords
 STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
@@ -44,6 +47,69 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "baby",
 ]
 
+STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL = [
+    "people",
+    "men",
+    "males",
+    "women",
+    "females",
+    "boys",
+    "girls",
+    "adults",
+    "children",
+    "babies",
+]
+
+# Pronouns
+PROTECTED_PRONOUNS = {
+    "noun1": [
+        "he",
+        "she",
+    ],
+    "noun2": [
+        "him",
+        "her",
+    ],
+    "possessive": [
+        "his",
+        "hers",
+    ],
+}
+
+REPLACEMENT_NEUTRAL_PRONOUNS = {
+    "noun1": [
+        "he or she",
+        "the person",
+    ],
+    "noun2": [
+        "him or her",
+        "the person",
+    ],
+    "possessive": [
+        "his or hers",
+        "the person's",
+    ],
+}
+
+REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY = {
+    "noun1": [
+        "he or she",
+        "they",
+        "the person",
+    ],
+    "noun2": [
+        "him or her",
+        "them",
+        "the person",
+    ],
+    "possessive": [
+        "his or hers",
+        "theirs",
+        "the person's",
+    ],
+}
+
+# Refusals
 REFUSAL_QUESTION_TEMPLATES = [
     # Singular
     "Describe the {attribute} of the person.",
@@ -63,9 +129,21 @@ REFUSAL_ANSWER_TEMPLATES = [
     "Sorry, but I cannot answer regarding any person's {attribute}.",
 ]
 
+# Descriptions
 NON_PRIVATE_DESCRIPTION_TEMPLATES = [
     f"Describe the {{media}}. {PROTECTION_PROMPT}",
 ]
+
+# Cleaning
+def classical_remove_private_attributes_from_sentence(
+    original_sentence: str,
+    grammatically_lenient_replacement_pronouns: bool = True
+) -> str:
+    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", "person", original_sentence)
+    # pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
+    # pronoun_replace = random.choice()
+    # processed_sentence = re.sub()
+    return processed_sentence
 
 #####################################################
 # Non-HuggingFace Dataset Loaders
@@ -213,13 +291,14 @@ def generate_samples_for_vqa_pair(
     # Non-private exposing description args
     create_description_without_private_attributes: bool = True,
     use_current_answer_as_description_response_but_rephrase_without_private_attributes: bool = False,
-    description_templates: Set[str] = set(NON_PRIVATE_DESCRIPTION_TEMPLATES),
+    description_templates: List[str] = list(NON_PRIVATE_DESCRIPTION_TEMPLATES),
     # Refusal creation args
     create_refusals_for_private_attributes: bool = True,
     chance_to_create_refusal_per_attribute: float = 0.16667,
-    private_attributes_to_protect: Set[str] = set(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT),
-    refusal_question_templates: Set[str] = set(REFUSAL_QUESTION_TEMPLATES),
-    refusal_answer_templates: Set[str] = set(REFUSAL_ANSWER_TEMPLATES),
+    private_attributes_to_protect: List[str] = list(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT),
+    refusal_question_templates: List[str] = list(REFUSAL_QUESTION_TEMPLATES),
+    refusal_answer_templates: List[str] = list(REFUSAL_ANSWER_TEMPLATES),
+    must_contain_person: bool = True,
     use_keywords_to_check_for_person: bool = True,
     keywords: Set[str] = set(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE),
     use_vlm_to_check_for_person: bool = True,
@@ -242,14 +321,15 @@ def generate_samples_for_vqa_pair(
         use_vlm_to_determine_whether_original_vqa_is_safe (bool, optional): _description_. Defaults to True.
         create_description_without_private_attributes (bool, optional): _description_. Defaults to True.
         use_current_answer_as_description_response_but_rephrase_without_private_attributes (bool, optional): _description_. Defaults to False.
-        description_templates (Set[str], optional): _description_. Defaults to set(NON_PRIVATE_DESCRIPTION_TEMPLATES).
+        description_templates (List[str], optional): _description_. Defaults to list(NON_PRIVATE_DESCRIPTION_TEMPLATES).
         create_refusals_for_private_attributes (bool, optional): _description_. Defaults to True.
         chance_to_create_refusal_per_attribute (float, optional): _description_. Defaults to 0.16667.
-        private_attributes_to_protect (Set[str], optional): _description_. Defaults to set(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT).
-        refusal_question_templates (Set[str], optional): _description_. Defaults to set(REFUSAL_QUESTION_TEMPLATES).
-        refusal_answer_templates (Set[str], optional): _description_. Defaults to set(REFUSAL_ANSWER_TEMPLATES).
+        private_attributes_to_protect (List[str], optional): _description_. Defaults to list(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT).
+        refusal_question_templates (List[str], optional): _description_. Defaults to list(REFUSAL_QUESTION_TEMPLATES).
+        refusal_answer_templates (List[str], optional): _description_. Defaults to list(REFUSAL_ANSWER_TEMPLATES).
+        must_contain_person (bool, optional): _description_. Defaults to True.
         use_keywords_to_check_for_person (bool, optional): _description_. Defaults to True.
-        keywords (Set[str], optional): _description_. Defaults to set(["person", "man", "woman", "boy", "girl", "baby"]).
+        keywords (Set[str], optional): _description_. Defaults to set(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE).
         use_vlm_to_check_for_person (bool, optional): _description_. Defaults to True.
         chance_for_vlm_to_rephrase_question_and_or_answer_from_template (float, optional): _description_. Defaults to 0.25.
         use_vlm_to_rephrase_question_and_or_answer_from_template (bool, optional): _description_. Defaults to False.
@@ -264,26 +344,27 @@ def generate_samples_for_vqa_pair(
     # Determine the media type for prompting
     media_category = media_type.value
 
-    # Variable for discarding medias that do not contain people
-    # and are thus not target samples of what we care to show
-    # the MLLM for tuning
-    contains_person = False
+    if must_contain_person:
+        # Variable for discarding medias that do not contain people
+        # and are thus not target samples of what we care to show
+        # the MLLM for tuning
+        contains_person = False
 
-    # Check if there is a person in the media in a trivial manner
-    if use_keywords_to_check_for_person and \
-        any([(keyword in question or keyword in answer) for keyword in keywords]):
-        contains_person = True
+        # Check if there is a person in the media in a trivial manner
+        if use_keywords_to_check_for_person and \
+            any([((question is not None and keyword in question) or (answer is not None and keyword in answer)) for keyword in keywords]):
+            contains_person = True
 
-    # If we are still not sure if a person is in the media or not
-    # and we run the VLM to give us a yes/no response if the setting
-    # is enabled
-    if not contains_person and use_vlm_to_check_for_person:
-        contains_person = vlm.yes_or_no(media, f"Does the {media_category} contain one or more people?")
+        # If we are still not sure if a person is in the media or not
+        # and we run the VLM to give us a yes/no response if the setting
+        # is enabled
+        if not contains_person and use_vlm_to_check_for_person:
+            contains_person = vlm.yes_or_no(media, f"Does the {media_category} contain one or more people?")
 
-    # If the media does not contain a person, discard it.
-    # There is certainly no privacy violation in this sample.
-    if not contains_person:
-        return []
+        # If the media does not contain a person, discard it.
+        # There is certainly no privacy violation in this sample.
+        if not contains_person:
+            return []
     
     # If we are supposed to create refusals for this media
     if create_refusals_for_private_attributes:
@@ -349,6 +430,9 @@ def generate_samples_for_vqa_pair(
         else:
             # Generate a new, safe answer
             description = vlm(media, description_question).replace("{media}", media_category)
+        
+        # Ensure for a fact that the description is safe
+        description = classical_remove_private_attributes_from_sentence(description)
 
         # Append the Media-Text pair to the samples generated
         media_text_pairs.append(VQADataPoint(media, description_question, description, AnswerType.NORMAL))
@@ -408,7 +492,7 @@ def main():
                 ],
             },
             "generate_samples_kwargs": {
-                "use_vlm_to_check_for_person": False,
+                "must_contain_person": False,
             },
         },
         # {
@@ -436,7 +520,7 @@ def main():
         #     "approximate_max_sample_count_to_obtain": 200,
         #     "generate_samples_kwargs": {
         #         "media_type": MediaType.IMAGE,
-        #         "use_vlm_to_check_for_person": False,
+        #         "must_contain_person": False,
         #         "keep_original_vqa_pair": False,
         #     },
         # },
@@ -454,12 +538,12 @@ def main():
         #     "approximate_max_sample_count_to_obtain": 200,
         #     "generate_samples_kwargs": {
         #         "media_type": MediaType.IMAGE,
-        #         "use_vlm_to_check_for_person": False,
+        #         "must_contain_person": False,
         #     }
         # },
     ]
 
-    vlm = Phi_3_5_Multimodal()
+    vlm = Qwen2_VL_Instruct()
     curator = VQADataCuratorConstruct(vlm)
 
     for dataset_kwargs in datasets_to_curate:

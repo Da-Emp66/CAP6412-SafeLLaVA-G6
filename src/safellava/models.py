@@ -87,7 +87,7 @@ class Qwen2_VL_Instruct(BaseMultiModalLanguageModel):
             self.model_id
         )
 
-    def __call__(self, video: Optional[str] = None, text: Optional[str] = None):
+    def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         sample_rate = 1.0
         
         _media_type, frames, num_frames = load_media(
