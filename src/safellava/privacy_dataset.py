@@ -26,7 +26,7 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "race",
     "sex",
     "gender",
-    "pronouns",
+    "pronoun(s)",
     "hair color",
     "hairstyle",
     "facial or other physical characteristics",
@@ -34,6 +34,17 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
 ]
 
 # Keywords
+
+NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE = [
+    "person",
+    "individual",
+]
+
+NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
+    "people",
+    "individuals",
+]
+
 STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
