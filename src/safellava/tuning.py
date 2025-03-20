@@ -161,7 +161,7 @@ class MicrosoftSwiftTuning:
         self.logger.info(f'best_model_checkpoint: {best_model_checkpoint}')
         return best_model_checkpoint, TunedMultiModalLanguageModel(model_id, best_model_checkpoint)
 
-    def visualize(self):
+    def visualize_training(self):
         time.sleep(5)
         while True:
             images_dir = os.path.join(self.train_output_dir, 'images')
