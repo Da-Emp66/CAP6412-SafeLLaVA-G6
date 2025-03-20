@@ -340,7 +340,7 @@ def example_instantiation_and_inference(
 ):
     # print(configuration_filename, flush=True)
     # vlm = Phi_3_5_Multimodal()
-    vlm = QwenVL_Instruct()
+    # vlm = QwenVL_Instruct()
     vlm = LlavaOnevision()
 
     if video is None:
