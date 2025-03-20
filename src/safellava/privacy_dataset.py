@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 from safellava.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
-from safellava.models import Qwen2_VL_Instruct
+from safellava.models import QwenVL_Instruct
 from safellava.utils import MediaType, load_online_files
 
 #####################################################
@@ -543,13 +543,13 @@ def main():
         # },
     ]
 
-    vlm = Qwen2_VL_Instruct()
+    vlm = QwenVL_Instruct()
     curator = VQADataCuratorConstruct(vlm)
 
     for dataset_kwargs in datasets_to_curate:
         curator.curate_dataset(
             generate_samples_strategy=generate_samples_for_vqa_pair,
-            **dataset_kwargs
+            **dataset_kwargs,
         )
 
 if __name__ == "__main__":
