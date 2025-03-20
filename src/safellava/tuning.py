@@ -2,6 +2,10 @@
 import os
 import threading
 import time
+from typing import Any, Optional, Tuple
+
+from safellava.interfaces import BaseMultiModalLanguageModel
+from safellava.utils import load_media
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
@@ -25,13 +29,33 @@ from PIL import Image
 # Using https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb
 # as a guide...
 
+
+class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
+    def __init__(self, model_id: str, checkpoint: str):
+        self.model_id = model_id
+        # Perform inference using the native PyTorch engine
+        self.engine = PtEngine(self.model_id, adapters=[checkpoint])
+
+    def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
+        _media_type, frames, _num_frames = load_media(video)
+        infer_request = InferRequest(messages=[{'role': 'user', 'content': [{ "type": "text", "text": text }, { "type": "video", "video": frames }]}])
+        request_config = RequestConfig(max_tokens=200, temperature=0.2)
+
+        resp_list = self.engine.infer([infer_request], request_config)
+        return resp_list[0].choices[0].message.content
+
 class MicrosoftSwiftTuning:
-    def __init__(self):
+    def __init__(self, seed: int = 42):
         self.logger = get_logger()
+        self.train_output_dir = "output"
+        self.seed = seed
         seed_everything(42)
 
-    def __call__(self):
+    def __call__(self, model_id: str, dataset: Any) -> Tuple[str, TunedMultiModalLanguageModel]:
         num_proc = 4  # The number of processes for data loading.
+        split_dataset_ratio = 0.1
+
+        max_length = 2048
 
         # lora
         lora_rank = 8
@@ -42,7 +66,7 @@ class MicrosoftSwiftTuning:
 
         # training_args
         self.training_args = Seq2SeqTrainingArguments(
-            output_dir=output_dir,
+            output_dir=self.train_output_dir,
             learning_rate=1e-4,
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
@@ -64,7 +88,7 @@ class MicrosoftSwiftTuning:
             save_total_limit=5,
             logging_steps=5,
             dataloader_num_workers=4,
-            data_seed=data_seed,
+            data_seed=self.seed,
             remove_unused_columns=False,
         )
 
@@ -72,17 +96,25 @@ class MicrosoftSwiftTuning:
         self.logger.info(f'output_dir: {output_dir}')
 
         # Obtain the model and template
-        model, processor = get_model_tokenizer(model_id_or_path)
+        model, processor = get_model_tokenizer(model_id)
         self.logger.info(f'model_info: {model.model_info}')
-        template = get_template(model.model_meta.template, processor, default_system=system, max_length=max_length)
+        template = get_template(model.model_meta.template, processor, default_system=None, max_length=max_length)
         template.set_mode('train')
 
         # Get target_modules and add trainable LoRA modules to the model.
         model_arch = get_model_arch(model.model_meta.model_arch)
-        target_modules = get_multimodal_target_regex(model_arch, freeze_llm=freeze_llm, freeze_vit=freeze_vit, 
-                                    freeze_aligner=freeze_aligner)
-        lora_config = LoraConfig(task_type='CAUSAL_LM', r=lora_rank, lora_alpha=lora_alpha,
-                                target_modules=target_modules)
+        target_modules = get_multimodal_target_regex(
+            model_arch,
+            freeze_llm=freeze_llm,
+            freeze_vit=freeze_vit,
+            freeze_aligner=freeze_aligner
+        )
+        lora_config = LoraConfig(
+            task_type='CAUSAL_LM',
+            r=lora_rank,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules
+        )
         model = Swift.prepare_model(model, lora_config)
         self.logger.info(f'lora_config: {lora_config}')
 
@@ -97,15 +129,15 @@ class MicrosoftSwiftTuning:
             dataset,
             split_dataset_ratio=split_dataset_ratio,
             num_proc=num_proc,
-            seed=data_seed,
+            seed=self.seed,
         )
 
         self.logger.info(f'train_dataset: {train_dataset}')
         self.logger.info(f'val_dataset: {val_dataset}')
         self.logger.info(f'train_dataset[0]: {train_dataset[0]}')
 
-        train_dataset = LazyLLMDataset(train_dataset, template.encode, random_state=data_seed)
-        val_dataset = LazyLLMDataset(val_dataset, template.encode, random_state=data_seed)
+        train_dataset = LazyLLMDataset(train_dataset, template.encode, random_state=self.seed)
+        val_dataset = LazyLLMDataset(val_dataset, template.encode, random_state=self.seed)
         data = train_dataset[0]
         self.logger.info(f'encoded_train_dataset[0]: {data}')
 
@@ -127,21 +159,13 @@ class MicrosoftSwiftTuning:
 
         best_model_checkpoint = trainer.state.best_model_checkpoint
         self.logger.info(f'best_model_checkpoint: {best_model_checkpoint}')
-        return best_model_checkpoint
+        return best_model_checkpoint, TunedMultiModalLanguageModel(model_id, best_model_checkpoint)
 
     def visualize(self):
         time.sleep(5)
         while True:
-            images_dir = os.path.join(output_dir, 'images')
+            images_dir = os.path.join(self.train_output_dir, 'images')
             self.logger.info(f'images_dir: {images_dir}')
             plot_images(images_dir, self.training_args.logging_dir, ['train/loss'], 0.9)
             image = Image.open(os.path.join(images_dir, 'train_loss.png'))
-
-    def infer(self):
-        # Perform inference using the native PyTorch engine
-        engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
-        infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
-        request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
-
-        resp_list = engine.infer([infer_request], request_config)
-        print(f'response: {resp_list[0].choices[0].message.content}')
+            image.show()
