@@ -9,7 +9,7 @@ from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.utils import load_media
 
 ##########################################################
-# Models for Tuning - Very Small Yet Performant Models
+# Poor-Performing Models
 ##########################################################
 
 class LlavaOnevision(BaseMultiModalLanguageModel):
@@ -51,10 +51,3 @@ class LlavaOnevision(BaseMultiModalLanguageModel):
 
         # Return the generated outputs
         return output_text
-    
-class LlavaInterleave(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = ""):
-        pass
-
-    def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
-        pass
