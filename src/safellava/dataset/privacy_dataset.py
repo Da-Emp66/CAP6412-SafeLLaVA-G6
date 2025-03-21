@@ -1,7 +1,8 @@
+import argparse
 import os
 import random
 import re
-from typing import List, Optional, Set
+from typing import List, Literal, Optional, Set
 from datasets import load_dataset
 import kagglehub
 import tarfile
@@ -10,6 +11,7 @@ import yaml
 from safellava.dataset.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models import QwenVL_Instruct
+from safellava.models.models import instantiate_model_based_on_model_map
 from safellava.utils import MediaType, load_online_files
 
 #####################################################
@@ -470,87 +472,151 @@ def generate_samples_for_vqa_pair(
 # Run Dataset Curator
 #####################################################
 
-def main():
+def process_dataset(
+    dataset_names: str,
+    process: Literal["curate", "clean"],
+    model: str,
+):
+    dataset_names = dataset_names.split(",")
     random.seed(87)
 
-    datasets_to_curate = [
-        
-        #####################################################
-        # Videos
-        #####################################################
+    if process == "curate":
+        curatable_datasets = [
+            
+            #####################################################
+            # Videos
+            #####################################################
 
-        {
-            "dataset": "hollywood2",
-            "media_key": "video",
-            "dataset_obtain_strategy": load_hollywood2,
-            "dataset_obtain_kwargs": {
-                "urls": [
-                    "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz"
-                ],
-                "filename_filter": [
-                    "autoauto"
-                ],
+            {
+                "dataset": "hollywood2",
+                "media_key": "video",
+                "dataset_obtain_strategy": load_hollywood2,
+                "dataset_obtain_kwargs": {
+                    "urls": [
+                        "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz"
+                    ],
+                    "filename_filter": [
+                        "autoauto"
+                    ],
+                },
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                },
             },
-            "generate_samples_kwargs": {
-                "must_contain_person": False,
+            {
+                "dataset": "lmms-lab/ActivityNetQA",
+                "media_key": lambda row: row["video_name"],
+                "question_key": "question",
+                "answer_key": "answer",
+                "approximate_max_sample_count_to_obtain": 200,
             },
-        },
-        # {
-        #     "dataset": "lmms-lab/ActivityNetQA",
-        #     "media_key": lambda row: row["video_name"],
-        #     "question_key": "question",
-        #     "answer_key": "answer",
-        #     "approximate_max_sample_count_to_obtain": 200,
-        # },
-        # {
-        #     "dataset": "lmms-lab/VideoDetailCaption",
-        #     "media_key": lambda row: row["video_name"],
-        #     "question_key": "question",
-        #     "answer_key": "answer",
-        #     "approximate_max_sample_count_to_obtain": 200,
-        # },
-        
-        #####################################################
-        # Images
-        #####################################################
+            {
+                "dataset": "lmms-lab/VideoDetailCaption",
+                "media_key": lambda row: row["video_name"],
+                "question_key": "question",
+                "answer_key": "answer",
+                "approximate_max_sample_count_to_obtain": 200,
+            },
+            
+            #####################################################
+            # Images
+            #####################################################
 
-        # {
-        #     "dataset": "dai22dai/video",
-        #     "media_key": lambda row: row["image"],
-        #     "approximate_max_sample_count_to_obtain": 200,
-        #     "generate_samples_kwargs": {
-        #         "media_type": MediaType.IMAGE,
-        #         "must_contain_person": False,
-        #         "keep_original_vqa_pair": False,
-        #     },
-        # },
-        # {
-        #     "dataset": "visogender",
-        #     "dataset_obtain_strategy": load_visogender,
-        #     "dataset_obtain_kwargs": {
-        #         "urls": [
-        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
-        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
-        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
-        #         ],
-        #     },
-        #     "media_key": "URL type (Type NA if can't find)",
-        #     "approximate_max_sample_count_to_obtain": 200,
-        #     "generate_samples_kwargs": {
-        #         "media_type": MediaType.IMAGE,
-        #         "must_contain_person": False,
-        #     }
-        # },
-    ]
+            {
+                "dataset": "dai22dai/video",
+                "media_key": lambda row: row["image"],
+                "approximate_max_sample_count_to_obtain": 200,
+                "generate_samples_kwargs": {
+                    "media_type": MediaType.IMAGE,
+                    "must_contain_person": False,
+                    "keep_original_vqa_pair": False,
+                },
+            },
+            {
+                "dataset": "visogender",
+                "dataset_obtain_strategy": load_visogender,
+                "dataset_obtain_kwargs": {
+                    "urls": [
+                        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
+                        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
+                        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
+                    ],
+                },
+                "media_key": "URL type (Type NA if can't find)",
+                "approximate_max_sample_count_to_obtain": 200,
+                "generate_samples_kwargs": {
+                    "media_type": MediaType.IMAGE,
+                    "must_contain_person": False,
+                }
+            },
+        ]
 
-    vlm = QwenVL_Instruct()
-    curator = VQADataCuratorConstruct(vlm)
+        vlm = instantiate_model_based_on_model_map(model)
 
-    for dataset_kwargs in datasets_to_curate:
-        curator.curate_dataset(
-            generate_samples_strategy=generate_samples_for_vqa_pair,
-            **dataset_kwargs,
-        )
+        print(f"Using {model} to curate dataset...")
+
+        curator = VQADataCuratorConstruct(vlm)
+
+        for dataset_kwargs in curatable_datasets:
+            if dataset_kwargs["dataset"] not in dataset_names:
+                continue
+
+            curator.curate_dataset(
+                generate_samples_strategy=generate_samples_for_vqa_pair,
+                **dataset_kwargs,
+            )
+
+    else:
+
+        curator = VQADataCuratorConstruct(vlm)
+
+        for dataset in dataset_names:
+            curator
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-d",
+        "--datasets",
+        type=str,
+        help="The names of the datasets; comma delimited",
+        required=True,
+    )
+    parser.add_argument(
+        "-p",
+        "--process",
+        type=str,
+        help="Process to perform on dataset",
+        choices=[
+            "curate",
+            "clean",
+        ],
+        required=True,
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        help="Model to try out",
+        choices=[
+            "Qwen2-VL",
+            "Qwen2.5-VL",
+            "Phi-3.5-Multimodal",
+            "Ovis2-1B",
+            "Ovis2-2B",
+            "Ovis2-4B",
+            "MiniCPM-o-2_6",
+            "Llava-OneVision-Qwen2-0.5B",
+            "Llava-Interleave-Qwen2-0.5B",
+        ],
+        default="Ovis2-1B",
+        required=False,
+    )
+    args = parser.parse_args()
+    
+    process_dataset(
+        args.dataset,
+        args.process,
+        args.model,
+    )

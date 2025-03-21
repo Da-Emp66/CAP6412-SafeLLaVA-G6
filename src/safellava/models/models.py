@@ -237,6 +237,22 @@ class LlavaInterleave(BaseMultiModalLanguageModel):
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         pass
 
+MODEL_MAP = {
+    "Qwen2-VL": (QwenVL_Instruct, { "model_id": "Qwen/Qwen2-VL-2B-Instruct" }),
+    "Qwen2.5-VL": (QwenVL_Instruct, {}),
+    "Phi-3.5-Multimodal": (Phi_3_5_Multimodal, {}),
+    "Ovis2-1B": (Ovis2, {}),
+    "Ovis2-2B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-2B" }),
+    "Ovis2-4B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-4B" }),
+    "MiniCPM-o-2_6": (MiniCPM, {}),
+    "Llava-OneVision-Qwen2-0.5B": (LlavaOnevision, {}),
+    "Llava-Interleave-Qwen2-0.5B": (LlavaInterleave, {}),
+}
+
+def instantiate_model_based_on_model_map(model_name: str) -> BaseMultiModalLanguageModel:
+    model_cls, model_kwargs = MODEL_MAP[model_name]
+    return model_cls(**model_kwargs)
+
 #####################################################
 # Example
 #####################################################
@@ -246,20 +262,7 @@ def example_instantiation_and_inference(
     video: Optional[str] = None,
     prompt: Optional[str] = None,
 ):
-    model_map = {
-        "Qwen2-VL": (QwenVL_Instruct, { "model_id": "Qwen/Qwen2-VL-2B-Instruct" }),
-        "Qwen2.5-VL": (QwenVL_Instruct, {}),
-        "Phi-3.5-Multimodal": (Phi_3_5_Multimodal, {}),
-        "Ovis2-1B": (Ovis2, {}),
-        "Ovis2-2B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-2B" }),
-        "Ovis2-4B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-4B" }),
-        "MiniCPM-o-2_6": (MiniCPM, {}),
-        "Llava-OneVision-Qwen2-0.5B": (LlavaOnevision, {}),
-        "Llava-Interleave-Qwen2-0.5B": (LlavaInterleave, {}),
-    }
-
-    model_cls, model_kwargs = model_map[model]
-    vlm = model_cls(**model_kwargs)
+    vlm = instantiate_model_based_on_model_map(model)
 
     if video is None:
         video = input("Path to video >")
@@ -314,3 +317,4 @@ if __name__ == "__main__":
         args.video,
         args.prompt,
     )
+
