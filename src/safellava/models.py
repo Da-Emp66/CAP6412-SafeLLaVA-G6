@@ -6,7 +6,6 @@ from transformers import (
     Qwen2VLForConditionalGeneration,
     AutoModelForCausalLM,
     AutoProcessor,
-    LlavaOnevisionForConditionalGeneration,
     AutoModel,
     AutoTokenizer
 )
@@ -21,17 +20,22 @@ from safellava.utils import get_video_length_seconds, load_media
 ##########################################################################################################
 
 class QwenVL_Instruct(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct"):
+    def __init__(self, model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct", use_flash_attention_2: bool = False):
         self.model_id = model_id # Can be "Qwen/Qwen2-VL-2B-Instruct", etc.
+
+        model_instantiation_kwargs = {}
+        if use_flash_attention_2:
+            model_instantiation_kwargs.update({"attn_implementation": "flash_attention_2"})
 
         self.model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_id,
             torch_dtype="auto",
             device_map="auto",
+            **model_instantiation_kwargs
         )
 
         self.processor = AutoProcessor.from_pretrained(
-            self.model_id
+            self.model_id,
         )
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
@@ -100,14 +104,14 @@ class QwenVL_Instruct(BaseMultiModalLanguageModel):
         return output_text
     
 class MiniCPM(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = "openbmb/MiniCPM-o-2_6"):
+    def __init__(self, model_id: str = "openbmb/MiniCPM-o-2_6", use_flash_attention_2: bool = False):
         self.model_id = model_id
 
         if self.model_id != "openbmb/MiniCPM-o-2_6-int4":
             self.model = AutoModel.from_pretrained(
                 self.model_id,
                 trust_remote_code=True,
-                attn_implementation='sdpa', # sdpa or flash_attention_2
+                attn_implementation="sdpa" if not use_flash_attention_2 else "flash_attention_2",
                 torch_dtype=torch.bfloat16,
                 init_vision=True,
                 init_audio=False,
@@ -175,13 +179,18 @@ class MiniCPM(BaseMultiModalLanguageModel):
         return answer
     
 class Ovis(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = "AIDC-AI/Ovis2-4B"):
-        self.model_id = model_id
+    def __init__(self, model_id: str = "AIDC-AI/Ovis2-1B", use_flash_attention_2: bool = False):
+        self.model_id = model_id # or "AIDC-AI/Ovis2-4B"
+        model_kwargs = {}
+        if not use_flash_attention_2:
+            model_kwargs.update({ "llm_attn_implementation": None })
+
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
             torch_dtype=torch.bfloat16,
             multimodal_max_length=32768,
             trust_remote_code=True,
+            **model_kwargs,
         ).cuda()
         self.text_tokenizer = self.model.get_text_tokenizer()
         self.visual_tokenizer = self.model.get_visual_tokenizer()
@@ -224,7 +233,7 @@ class Ovis(BaseMultiModalLanguageModel):
 #####################################################
 
 class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = "microsoft/Phi-3.5-vision-instruct"):
+    def __init__(self, model_id: str = "microsoft/Phi-3.5-vision-instruct", use_flash_attention_2: bool = False):
         self.model_id = model_id
 
         # Note: set _attn_implementation='eager' if you don't have flash_attn installed
@@ -233,7 +242,7 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
             device_map="cuda",
             trust_remote_code=True,
             torch_dtype="auto",
-            _attn_implementation=None,
+            _attn_implementation=None if not use_flash_attention_2 else "flash_attention_2",
         )
 
         # for best performance, use num_crops=4 for multi-frame, num_crops=16 for single-frame.
@@ -288,15 +297,12 @@ class Phi_3_5_Multimodal(BaseMultiModalLanguageModel):
 #####################################################
 
 def example_instantiation_and_inference(
-    # configuration_filename: str,
     video: Optional[str] = None,
     prompt: Optional[str] = None,
 ):
-    # print(configuration_filename, flush=True)
     # vlm = Phi_3_5_Multimodal()
     # vlm = QwenVL_Instruct()
-    # vlm = LlavaOnevision()
-    vlm = LlavaInterleave()
+    vlm = Ovis()
 
     if video is None:
         video = input("Path to video >")
@@ -310,14 +316,6 @@ def example_instantiation_and_inference(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "-c",
-    #     "--configuration",
-    #     type=str,
-    #     help="Path to model configuration",
-    #     default=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "configurations", "example.yaml"),
-    #     required=False,
-    # )
     parser.add_argument(
         "-v",
         "--video",
@@ -337,7 +335,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     example_instantiation_and_inference(
-        # args.configuration,
         args.video,
         args.prompt,
     )
