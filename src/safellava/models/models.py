@@ -249,8 +249,9 @@ MODEL_MAP = {
     "Llava-Interleave-Qwen2-0.5B": (LlavaInterleave, {}),
 }
 
-def instantiate_model_based_on_model_map(model_name: str) -> BaseMultiModalLanguageModel:
+def instantiate_model_based_on_model_map(model_name: str, **additional_kwargs) -> BaseMultiModalLanguageModel:
     model_cls, model_kwargs = MODEL_MAP[model_name]
+    model_kwargs.update(additional_kwargs)
     return model_cls(**model_kwargs)
 
 #####################################################

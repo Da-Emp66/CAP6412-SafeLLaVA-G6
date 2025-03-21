@@ -10,7 +10,6 @@ import pandas as pd
 import yaml
 from safellava.dataset.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
-from safellava.models import QwenVL_Instruct
 from safellava.models.models import instantiate_model_based_on_model_map
 from safellava.utils import MediaType, load_online_files
 
