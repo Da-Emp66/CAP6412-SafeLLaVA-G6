@@ -197,3 +197,7 @@ class VQADataCuratorConstruct:
             except Exception as e:
                 print(f"Error `{e.__class__}` at dataset index `{idx}`. Skipping...")
                 
+    def clean_existing_dataset(
+        self,
+    ):
+        pass
