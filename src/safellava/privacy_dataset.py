@@ -26,7 +26,7 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "race",
     "sex",
     "gender",
-    "pronouns",
+    "pronoun(s)",
     "hair color",
     "hairstyle",
     "facial or other physical characteristics",
@@ -34,6 +34,17 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
 ]
 
 # Keywords
+
+NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE = [
+    "person",
+    "individual",
+]
+
+NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
+    "people",
+    "individuals",
+]
+
 STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
@@ -72,7 +83,7 @@ PROTECTED_PRONOUNS = {
     ],
     "possessive": [
         "his",
-        "hers",
+        "her",
     ],
 }
 
@@ -86,7 +97,7 @@ REPLACEMENT_NEUTRAL_PRONOUNS = {
         "the person",
     ],
     "possessive": [
-        "his or hers",
+        "his or her",
         "the person's",
     ],
 }
@@ -103,7 +114,7 @@ REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY = {
         "the person",
     ],
     "possessive": [
-        "his or hers",
+        "his or her",
         "theirs",
         "the person's",
     ],
@@ -139,10 +150,11 @@ def classical_remove_private_attributes_from_sentence(
     original_sentence: str,
     grammatically_lenient_replacement_pronouns: bool = True
 ) -> str:
-    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", "person", original_sentence)
-    # pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
-    # pronoun_replace = random.choice()
-    # processed_sentence = re.sub()
+    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL), original_sentence)
+    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE), original_sentence)
+    pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
+    for pronoun_type in PROTECTED_PRONOUNS:
+        processed_sentence = re.sub(fr"({'|'.join(PROTECTED_PRONOUNS[pronoun_type])})", random.choice(pronoun_replacement_options[pronoun_type]), processed_sentence)
     return processed_sentence
 
 #####################################################
@@ -292,6 +304,7 @@ def generate_samples_for_vqa_pair(
     create_description_without_private_attributes: bool = True,
     use_current_answer_as_description_response_but_rephrase_without_private_attributes: bool = False,
     description_templates: List[str] = list(NON_PRIVATE_DESCRIPTION_TEMPLATES),
+    classically_clean_description: bool = True,
     # Refusal creation args
     create_refusals_for_private_attributes: bool = True,
     chance_to_create_refusal_per_attribute: float = 0.16667,
@@ -322,6 +335,7 @@ def generate_samples_for_vqa_pair(
         create_description_without_private_attributes (bool, optional): _description_. Defaults to True.
         use_current_answer_as_description_response_but_rephrase_without_private_attributes (bool, optional): _description_. Defaults to False.
         description_templates (List[str], optional): _description_. Defaults to list(NON_PRIVATE_DESCRIPTION_TEMPLATES).
+        classically_clean_description (bool, optional): _description_. Defaults to True.
         create_refusals_for_private_attributes (bool, optional): _description_. Defaults to True.
         chance_to_create_refusal_per_attribute (float, optional): _description_. Defaults to 0.16667.
         private_attributes_to_protect (List[str], optional): _description_. Defaults to list(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT).
@@ -432,7 +446,8 @@ def generate_samples_for_vqa_pair(
             description = vlm(media, description_question).replace("{media}", media_category)
         
         # Ensure for a fact that the description is safe
-        description = classical_remove_private_attributes_from_sentence(description)
+        if classically_clean_description:
+            description = classical_remove_private_attributes_from_sentence(description)
 
         # Append the Media-Text pair to the samples generated
         media_text_pairs.append(VQADataPoint(media, description_question, description, AnswerType.NORMAL))
