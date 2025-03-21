@@ -83,7 +83,7 @@ PROTECTED_PRONOUNS = {
     ],
     "possessive": [
         "his",
-        "hers",
+        "her",
     ],
 }
 
@@ -97,7 +97,7 @@ REPLACEMENT_NEUTRAL_PRONOUNS = {
         "the person",
     ],
     "possessive": [
-        "his or hers",
+        "his or her",
         "the person's",
     ],
 }
@@ -114,7 +114,7 @@ REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY = {
         "the person",
     ],
     "possessive": [
-        "his or hers",
+        "his or her",
         "theirs",
         "the person's",
     ],
@@ -150,10 +150,11 @@ def classical_remove_private_attributes_from_sentence(
     original_sentence: str,
     grammatically_lenient_replacement_pronouns: bool = True
 ) -> str:
-    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", "person", original_sentence)
-    # pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
-    # pronoun_replace = random.choice()
-    # processed_sentence = re.sub()
+    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL), original_sentence)
+    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE), original_sentence)
+    pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
+    for pronoun_type in PROTECTED_PRONOUNS:
+        processed_sentence = re.sub(fr"({'|'.join(PROTECTED_PRONOUNS[pronoun_type])})", random.choice(pronoun_replacement_options[pronoun_type]), processed_sentence)
     return processed_sentence
 
 #####################################################
