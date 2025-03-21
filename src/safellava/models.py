@@ -224,14 +224,19 @@ class Ovis(BaseMultiModalLanguageModel):
 ##########################################################
 
 class LlavaOnevision(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = "llava-hf/llava-onevision-qwen2-0.5b-ov-hf"):
+    def __init__(self, model_id: str = "llava-hf/llava-onevision-qwen2-0.5b-ov-hf", load_in_4bit: bool = False, use_flash_attention_2: bool = False):
         self.model_id = model_id
         self.model = LlavaOnevisionForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
+            load_in_4bit=load_in_4bit,
+            use_flash_attention_2=use_flash_attention_2,
         ).to(0)
-        self.processor = AutoProcessor.from_pretrained(model_id)
+        self.processor = AutoProcessor.from_pretrained(
+            model_id,
+            use_fast=True,
+        )
     
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         # Load the video as frames
@@ -242,9 +247,9 @@ class LlavaOnevision(BaseMultiModalLanguageModel):
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": text},
-                ] + [
                     {"type": "image"} for _ in range(num_frames)
+                ] + [
+                    {"type": "text", "text": f"user\n{text}\nassistant\n"},
                 ],
             },
         ]
@@ -259,7 +264,7 @@ class LlavaOnevision(BaseMultiModalLanguageModel):
         return output_text
     
 class LlavaInterleave(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str):
+    def __init__(self, model_id: str = ""):
         pass
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
@@ -341,7 +346,8 @@ def example_instantiation_and_inference(
     # print(configuration_filename, flush=True)
     # vlm = Phi_3_5_Multimodal()
     # vlm = QwenVL_Instruct()
-    vlm = LlavaOnevision()
+    # vlm = LlavaOnevision()
+    vlm = LlavaInterleave()
 
     if video is None:
         video = input("Path to video >")
