@@ -13,6 +13,8 @@ from qwen_vl_utils import process_vision_info
 
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
+from safellava.models.less_performing_models import LlavaOnevision
+from safellava.models.models_of_unknown_quality import Phi_3_5_Multimodal
 
 ##########################################################################################################
 # High-Performing Models that Can Run On <=8GB VRAM
@@ -178,7 +180,7 @@ class MiniCPM(BaseMultiModalLanguageModel):
         
         return answer
     
-class Ovis(BaseMultiModalLanguageModel):
+class Ovis2(BaseMultiModalLanguageModel):
     def __init__(self, model_id: str = "AIDC-AI/Ovis2-1B", use_flash_attention_2: bool = False):
         self.model_id = model_id # or "AIDC-AI/Ovis2-4B"
         model_kwargs = {}
@@ -240,12 +242,24 @@ class LlavaInterleave(BaseMultiModalLanguageModel):
 #####################################################
 
 def example_instantiation_and_inference(
+    model: Optional[str] = None,
     video: Optional[str] = None,
     prompt: Optional[str] = None,
 ):
-    # vlm = Phi_3_5_Multimodal()
-    # vlm = QwenVL_Instruct()
-    vlm = Ovis()
+    model_map = {
+        "Qwen2-VL": (QwenVL_Instruct, { "model_id": "Qwen/Qwen2-VL-2B-Instruct" }),
+        "Qwen2.5-VL": (QwenVL_Instruct, {}),
+        "Phi-3.5-Multimodal": (Phi_3_5_Multimodal, {}),
+        "Ovis2-1B": (Ovis2, {}),
+        "Ovis2-2B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-2B" }),
+        "Ovis2-4B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-4B" }),
+        "MiniCPM-o-2_6": (MiniCPM, {}),
+        "Llava-OneVision-Qwen2-0.5B": (LlavaOnevision, {}),
+        "Llava-Interleave-Qwen2-0.5B": (LlavaInterleave, {}),
+    }
+
+    model_cls, model_kwargs = model_map[model]
+    vlm = model_cls(model_kwargs)
 
     if video is None:
         video = input("Path to video >")
@@ -259,6 +273,24 @@ def example_instantiation_and_inference(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        help="Model to try out",
+        choices=[
+            "Qwen2-VL",
+            "Qwen2.5-VL",
+            "Phi-3.5-Multimodal",
+            "Ovis2-1B",
+            "Ovis2-2B",
+            "Ovis2-4B",
+            "MiniCPM-o-2_6",
+            "Llava-OneVision-Qwen2-0.5B",
+            "Llava-Interleave-Qwen2-0.5B",
+        ],
+        required=True,
+    )
     parser.add_argument(
         "-v",
         "--video",
@@ -278,6 +310,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     example_instantiation_and_inference(
+        args.model,
         args.video,
         args.prompt,
     )
