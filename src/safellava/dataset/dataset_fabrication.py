@@ -1,7 +1,7 @@
 from enum import Enum
 import os
 import shutil
-from typing import Any, Callable, Dict, NamedTuple, Optional, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Union
 import warnings
 from datasets import load_dataset
 
@@ -197,3 +197,29 @@ class VQADataCuratorConstruct:
             except Exception as e:
                 print(f"Error `{e.__class__}` at dataset index `{idx}`. Skipping...")
                 
+    def postprocess_existing_datasets(
+        self,
+        dataset_csv: List[str],
+        destination_csv: List[str],
+        postprocess_video: Optional[Callable] = None,
+        postprocess_question: Optional[Callable] = None,
+        postprocess_answer: Optional[Callable] = None,
+        postprocess_answer_type: Optional[Callable] = None,
+    ):
+        postprocessing_funcs_to_keys = [
+            (postprocess_video, "video"),
+            (postprocess_question, "question"),
+            (postprocess_answer, "answer"),
+            (postprocess_answer_type, "answer_type"),
+        ]
+
+        loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
+        
+        for idx, row in enumerate(loaded_dataset):
+            for postprocessing_func, key in postprocessing_funcs_to_keys:
+                row[key] = postprocessing_func(row[key])
+
+        loaded_dataset.to_csv(
+            destination_csv,
+            sep='|',
+        )
