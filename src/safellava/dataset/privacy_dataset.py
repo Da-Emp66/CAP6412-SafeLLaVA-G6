@@ -7,7 +7,7 @@ import kagglehub
 import tarfile
 import pandas as pd
 import yaml
-from safellava.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
+from safellava.dataset.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models import QwenVL_Instruct
 from safellava.utils import MediaType, load_online_files
