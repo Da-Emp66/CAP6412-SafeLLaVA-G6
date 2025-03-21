@@ -259,7 +259,7 @@ def example_instantiation_and_inference(
     }
 
     model_cls, model_kwargs = model_map[model]
-    vlm = model_cls(model_kwargs)
+    vlm = model_cls(**model_kwargs)
 
     if video is None:
         video = input("Path to video >")
