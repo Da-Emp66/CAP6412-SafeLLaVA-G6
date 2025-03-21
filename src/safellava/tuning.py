@@ -61,7 +61,7 @@ class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
         resp_list = self.engine.infer([infer_request], request_config)
         return resp_list[0].choices[0].message.content
 
-class MicrosoftSwiftTuning:
+class ModelScopeSwiftTuning:
     def __init__(self, seed: int = 42):
         self.logger = get_logger()
         self.train_output_dir = "output"
@@ -188,7 +188,7 @@ class MicrosoftSwiftTuning:
             image.show()
 
 def main():
-    tuner = MicrosoftSwiftTuning()
+    tuner = ModelScopeSwiftTuning()
     tuner("llava-hf/llava-onevision-qwen2-0.5b-ov-hf", None)
 
 if __name__ == "__main__":
