@@ -33,12 +33,29 @@ from PIL import Image
 class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
     def __init__(self, model_id: str, checkpoint: str):
         self.model_id = model_id
+        self.checkpoint = checkpoint
         # Perform inference using the native PyTorch engine
-        self.engine = PtEngine(self.model_id, adapters=[checkpoint])
+        self.engine = PtEngine(checkpoint, adapters=[checkpoint])
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         _media_type, frames, _num_frames = load_media(video)
-        infer_request = InferRequest(messages=[{'role': 'user', 'content': [{ "type": "text", "text": text }, { "type": "video", "video": frames }]}])
+        infer_request = InferRequest(
+            messages=[
+                {
+                    'role': 'user',
+                    'content': [
+                        {
+                            "type": "text",
+                            "text": text,
+                        },
+                        {
+                            "type": "video",
+                            "video": frames,
+                        }
+                    ]
+                }
+            ]
+        )
         request_config = RequestConfig(max_tokens=200, temperature=0.2)
 
         resp_list = self.engine.infer([infer_request], request_config)
@@ -169,3 +186,11 @@ class MicrosoftSwiftTuning:
             plot_images(images_dir, self.training_args.logging_dir, ['train/loss'], 0.9)
             image = Image.open(os.path.join(images_dir, 'train_loss.png'))
             image.show()
+
+def main():
+    tuner = MicrosoftSwiftTuning()
+    tuner("llava-hf/llava-onevision-qwen2-0.5b-ov-hf", None)
+
+if __name__ == "__main__":
+    main()
+
