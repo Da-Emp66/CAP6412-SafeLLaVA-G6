@@ -587,7 +587,7 @@ def process_dataset(
         for dataset in dataset_names:
             curator.postprocess_existing_datasets(
                 dataset_csv=dataset,
-                destination_csv=f"{dataset.strip(".csv")}_cleaned.csv",
+                destination_csv=f"{dataset.strip('.csv')}_cleaned.csv",
                 postprocess_answer=classical_remove_private_attributes_from_sentence,
             )
 
