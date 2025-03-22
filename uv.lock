@@ -356,6 +356,7 @@ dependencies = [
     { name = "optimum-quanto" },
     { name = "pillow" },
     { name = "pytube" },
+    { name = "pytubefix" },
     { name = "quanto" },
     { name = "qwen-vl-utils" },
     { name = "safetensors" },
@@ -384,6 +385,7 @@ requires-dist = [
     { name = "optimum-quanto", specifier = ">=0.2.6" },
     { name = "pillow", specifier = ">=11.1.0" },
     { name = "pytube", specifier = ">=15.0.0" },
+    { name = "pytubefix", specifier = ">=8.12.2" },
     { name = "quanto", specifier = ">=0.2.0" },
     { name = "qwen-vl-utils", specifier = ">=0.0.10" },
     { name = "safetensors", specifier = ">=0.5.2" },
@@ -2466,6 +2468,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/e7/16fec46c8d255c4bbc4b185d89c91dc92cdb802836570d8004d0db169c91/pytube-15.0.0.tar.gz", hash = "sha256:076052efe76f390dfa24b1194ff821d4e86c17d41cb5562f3a276a8bcbfc9d1d", size = 67229 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/64/bcf8632ed2b7a36bbf84a0544885ffa1d0b4bcf25cc0903dba66ec5fdad9/pytube-15.0.0-py3-none-any.whl", hash = "sha256:07b9904749e213485780d7eb606e5e5b8e4341aa4dccf699160876da00e12d78", size = 57594 },
+]
+
+[[package]]
+name = "pytubefix"
+version = "8.12.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/78/052f22b47e8acff8543b2a5b113d4c034c8c1c232ed77a5d9e32c33399f4/pytubefix-8.12.2.tar.gz", hash = "sha256:65d70a27806b1c129340c770243c3bbebc6b8a74f4cc30aa7803a192fdef94e1", size = 733063 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/d5/5a39f5515767d7615da06940b492c821fb7269c897702fa9de1190ef0ca3/pytubefix-8.12.2-py3-none-any.whl", hash = "sha256:061970d55aa1597a69f4e0bd3117de0224a1a3a3da37dc81e9f4ff66ba6875ab", size = 730676 },
 ]
 
 [[package]]

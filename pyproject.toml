@@ -37,6 +37,7 @@ dependencies = [
     # "gptqmodel",
     # "auto_gptq",
     "addict>=2.4.0",
+    "pytubefix>=8.12.2",
 ]
 
 [tool.uv]
