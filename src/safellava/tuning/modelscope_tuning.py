@@ -21,7 +21,7 @@ from swift.llm import (
 )
 from swift.utils import get_logger, get_model_parameter_info, plot_images, seed_everything
 from swift.tuners import Swift, LoraConfig
-from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from swift.trainers import Trainer, TrainingArguments
 from functools import partial
 from PIL import Image
 
@@ -82,8 +82,9 @@ class ModelScopeSwiftTuning:
         freeze_aligner = True
 
         # training_args
-        self.training_args = Seq2SeqTrainingArguments(
+        self.training_args = TrainingArguments(
             output_dir=self.train_output_dir,
+            # train_type="lora",
             learning_rate=1e-4,
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
@@ -164,7 +165,7 @@ class ModelScopeSwiftTuning:
 
         # Get the trainer and start the training.
         model.enable_input_require_grads()  # Compatible with gradient checkpointing
-        trainer = Seq2SeqTrainer(
+        trainer = Trainer(
             model=model,
             args=self.training_args,
             data_collator=template.data_collator,
@@ -186,6 +187,7 @@ class ModelScopeSwiftTuning:
             plot_images(images_dir, self.training_args.logging_dir, ['train/loss'], 0.9)
             image = Image.open(os.path.join(images_dir, 'train_loss.png'))
             image.show()
+            
 
 def main():
     tuner = ModelScopeSwiftTuning()

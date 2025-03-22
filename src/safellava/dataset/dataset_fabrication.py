@@ -1,4 +1,5 @@
 from enum import Enum
+import json
 import os
 import shutil
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Union
@@ -201,13 +202,13 @@ class VQADataCuratorConstruct:
         self,
         dataset_csv: List[str],
         destination_csv: List[str],
-        postprocess_video: Optional[Callable] = None,
+        postprocess_media: Optional[Callable] = None,
         postprocess_question: Optional[Callable] = None,
         postprocess_answer: Optional[Callable] = None,
         postprocess_answer_type: Optional[Callable] = None,
     ):
         postprocessing_funcs_to_keys = [
-            (postprocess_video, "video"),
+            (postprocess_media, "media_filepath"),
             (postprocess_question, "question"),
             (postprocess_answer, "answer"),
             (postprocess_answer_type, "answer_type"),
@@ -223,3 +224,40 @@ class VQADataCuratorConstruct:
             destination_csv,
             sep='|',
         )
+
+    def prepare_dataset_for_swift_tuning(
+            self,
+            dataset_csv: str,
+            destination_json: str,
+        ):
+        """Convert each row into a line like:
+        {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+        and place the rows into an improper JSON file
+        
+        Args:
+            dataset_csv (str): _description_
+        """
+        
+        loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
+
+        lines = []
+        for idx, row in enumerate(loaded_dataset):
+            media_type = get_media_type(row['media_filepath'])
+
+            if media_type == MediaType.IMAGE_OR_VIDEO:
+                continue
+
+            lines.append(json.dumps({
+                "messages": [
+                    {"role": "system", "content": "You are a helpful and harmless assistant."},
+                    {"role": "user", "content": f"<{media_type.value}>{row['question']}"},
+                    {"role": "assistant", "content": row['answer']},
+                ],
+                "videos": [row['media_path']] if media_type == MediaType.VIDEO else [],
+                "images": [row['media_path']] if media_type == MediaType.IMAGE else [],
+            }))
+
+        with open(destination_json, "w") as dest:
+            dest.writelines(lines)
+            dest.close()
+        
