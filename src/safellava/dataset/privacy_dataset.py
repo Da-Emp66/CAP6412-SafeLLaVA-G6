@@ -2,7 +2,7 @@ import argparse
 import os
 import random
 import re
-from typing import List, Literal, Optional, Set
+from typing import Callable, List, Literal, Optional, Set
 from datasets import load_dataset
 import kagglehub
 import tarfile
@@ -50,8 +50,10 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
     "male",
+    "guy",
     "woman",
     "female",
+    "gal",
     "boy",
     "girl",
     "adult",
@@ -63,8 +65,10 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL = [
     "people",
     "men",
     "males",
+    "guys",
     "women",
     "females",
+    "gals",
     "boys",
     "girls",
     "adults",
@@ -116,7 +120,7 @@ REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY = {
     ],
     "possessive": [
         "his or her",
-        "theirs",
+        "their",
         "the person's",
     ],
 }
@@ -146,16 +150,46 @@ NON_PRIVATE_DESCRIPTION_TEMPLATES = [
     f"Describe the {{media}}. {PROTECTION_PROMPT}",
 ]
 
+def pad_word_or_phrase(phrase: str) -> str:
+    return rf" {phrase} "
+
+def pad_word_or_phrase_at_the_end_of_a_sentence(phrase: str) -> str:
+    return rf" {phrase}."
+
+def pad_word_or_phrase_in_the_middle_of_a_sentence(phrase: str) -> str:
+    return rf" {phrase},"
+
+def pad_word_or_phrase_at_the_beginning_of_a_sentence(phrase: str) -> str:
+    return rf" {phrase.capitalize()} "
+
 # Cleaning
 def classical_remove_private_attributes_from_sentence(
     original_sentence: str,
-    grammatically_lenient_replacement_pronouns: bool = True
+    ablations: List[Callable] = [
+        pad_word_or_phrase,
+        pad_word_or_phrase_at_the_beginning_of_a_sentence,
+        pad_word_or_phrase_in_the_middle_of_a_sentence,
+        pad_word_or_phrase_at_the_end_of_a_sentence,
+    ],
+    grammatically_lenient_replacement_pronouns: bool = True,
 ) -> str:
-    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL), original_sentence)
-    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE), original_sentence)
+    processed_sentence = original_sentence
+
+    for ablation in ablations:
+        processed_sentence = re.sub(fr"({'|'.join(list(map(ablation, STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL)))})".replace(".", r"\."), random.choice(list(map(ablation, NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL))), processed_sentence)
+    
+    for ablation in ablations:
+        processed_sentence = re.sub(fr"({'|'.join(list(map(ablation, STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)))})".replace(".", r"\."), random.choice(list(map(ablation, NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE))), processed_sentence)
+    
     pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
-    for pronoun_type in PROTECTED_PRONOUNS:
-        processed_sentence = re.sub(fr"({'|'.join(PROTECTED_PRONOUNS[pronoun_type])})", random.choice(pronoun_replacement_options[pronoun_type]), processed_sentence)
+    for ablation in ablations:
+        for pronoun_type in PROTECTED_PRONOUNS:
+            processed_sentence = re.sub(fr"({'|'.join(list(map(ablation, PROTECTED_PRONOUNS[pronoun_type])))})".replace(".", r"\."), random.choice(list(map(ablation, pronoun_replacement_options[pronoun_type]))), processed_sentence)
+    
+    # Patch the cases that get replaced twice
+    for val in pronoun_replacement_options["possessive"]:
+        processed_sentence = processed_sentence.replace(f"him or {val}", val)
+
     return processed_sentence
 
 #####################################################

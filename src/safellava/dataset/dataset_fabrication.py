@@ -202,10 +202,10 @@ class VQADataCuratorConstruct:
         self,
         dataset_csv: List[str],
         destination_csv: List[str],
-        postprocess_media: Optional[Callable] = None,
-        postprocess_question: Optional[Callable] = None,
-        postprocess_answer: Optional[Callable] = None,
-        postprocess_answer_type: Optional[Callable] = None,
+        postprocess_media: Optional[Callable] = lambda x: x,
+        postprocess_question: Optional[Callable] = lambda x: x,
+        postprocess_answer: Optional[Callable] = lambda x: x,
+        postprocess_answer_type: Optional[Callable] = lambda x: x,
     ):
         postprocessing_funcs_to_keys = [
             (postprocess_media, "media_path"),
@@ -223,9 +223,12 @@ class VQADataCuratorConstruct:
 
         loaded_dataset = loaded_dataset.map(alter_row)
 
+        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
+
         loaded_dataset.to_pandas().to_csv(
             destination_csv,
             sep='|',
+            index=True,
         )
 
     def merge_existing_datasets(self, *dataset_csvs: List[str], destination_csv: str) -> str:
