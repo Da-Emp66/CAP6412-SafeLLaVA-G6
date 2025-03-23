@@ -34,18 +34,24 @@ The folder structure of this project is organized as follows:
 Modify `src/safellava/datasets/privacy_dataset.py` with your own dataset parameters in the `curatable_datasets` list and, optionally, your own dataset loader for downloading and loading your dataset, if it cannot be completely downloaded, including all videos and/or images, from HuggingFace.
 
 ```python
-    from datasets import load_dataset
+from datasets import load_dataset
 
-    # If you want to use a dataset that is not a dataset that can be
-    # downloaded directly and completely from HuggingFace
-    def load_my_dataset(dataset: str, **dataset_obtain_kwargs):
-        # Download files from my dataset
-        ... # Can use functions from `utils.py` like load_online_files(urls=[...]) if all URLs are known
-        # or download_youtube_video(video_id="YouTube ID for video") if downloading YouTube videos,
-        # or you can write your own functions for downloading files for your dataset
+...
 
-        # Return the dataset as a loaded
-        return load_dataset("csv", data_files=["my_custom_dataset.csv"])
+# If you want to use a dataset that is not a dataset that can be
+# downloaded directly and completely from HuggingFace
+def load_my_dataset(dataset: str, **dataset_obtain_kwargs):
+    # Download files from my dataset
+    ... # Can use functions from `utils.py` like load_online_files(urls=[...]) if all URLs are known
+    # or download_youtube_video(video_id="YouTube ID for video") if downloading YouTube videos,
+    # or you can write your own functions for downloading files for your dataset
+
+    # Return the dataset as a loaded
+    return load_dataset("csv", data_files=["my_custom_dataset.csv"])
+
+...
+
+def main(args):
 
     ...
 
@@ -72,6 +78,9 @@ Modify `src/safellava/datasets/privacy_dataset.py` with your own dataset paramet
         ...,
 
     ]
+
+    ...
+
 ```
 Once you configure all the parameters you wish for dataset curation and optionally make your custom loader function, the curator construct will generate samples for you using combinations of MLLM-generated privacy-focused descriptions and random refusals for requests to expose private information in videos.
 
