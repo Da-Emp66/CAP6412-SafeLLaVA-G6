@@ -25,41 +25,51 @@ from swift.trainers import Trainer, TrainingArguments
 from functools import partial
 from PIL import Image
 
+from swift.llm.infer import SwiftInfer
+from swift.llm import InferArguments
+from transformers.hf_argparser import HfArgumentParser
 
 # Using https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb
 # as a guide...
 
 
 class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str, checkpoint: str):
+    def __init__(
+        self,
+        model_id: str,
+        checkpoint: str,
+        model_instantiation_kwargs = {
+             "stream": True,
+             "temperature": 0,
+             "max_new_tokens": 2048,
+        },
+    ):
         self.model_id = model_id
         self.checkpoint = checkpoint
-        # Perform inference using the native PyTorch engine
-        self.engine = PtEngine(checkpoint, adapters=[checkpoint])
+        self.parser = HfArgumentParser(InferArguments)
+        self.model_instantiation_kwargs = model_instantiation_kwargs
+        self.model_instantiation_kwargs.update({ "adapters": checkpoint })
+        self.arguments = self.parser.parse_dict(self.model_instantiation_kwargs)[0]
+        
+        self.engine = SwiftInfer(self.arguments)
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
-        _media_type, frames, _num_frames = load_media(video)
+        # _media_type, frames, _num_frames = load_media(video, 1)
         infer_request = InferRequest(
             messages=[
                 {
-                    'role': 'user',
-                    'content': [
-                        {
-                            "type": "text",
-                            "text": text,
-                        },
-                        {
-                            "type": "video",
-                            "video": frames,
-                        }
-                    ]
-                }
-            ]
+                    "role": "system",
+                    "content": "You are a helpful and harmless assistant.",
+                },
+                {
+                    "role": "user",
+                    "content": f"<video>{text}",
+                },
+            ],
+            videos=[video],
         )
         request_config = RequestConfig(max_tokens=200, temperature=0.2)
-
-        resp_list = self.engine.infer([infer_request], request_config)
-        return resp_list[0].choices[0].message.content
+        return self.engine.infer_single(infer_request, request_config)
 
 class ModelScopeSwiftTuning:
     def __init__(self, seed: int = 42):
@@ -189,11 +199,27 @@ class ModelScopeSwiftTuning:
             image.show()
 
 
-# def main():
-    # tuner = ModelScopeSwiftTuning()
-    # tuner("llava-hf/llava-onevision-qwen2-0.5b-ov-hf", None)
+def main():
+    tuned_model = TunedMultiModalLanguageModel(
+        "AIDC-AI/Private-Ovis2-1B",
+        "checkpoint-1474-20250323T185905Z-001/checkpoint-1474",
+        model_instantiation_kwargs={
+            "stream": True,
+            "temperature": 0,
+            "max_new_tokens": 2048,
+            "attn_impl": "sdpa",
+            "model_kwargs": {
+                "device_map": "cuda:0",
+                # "llm_attn_implementation": None,
+            },
+        },
+    )
 
+    print(tuned_model(
+        video="privacy_preservation/hollywood2_curated/videos/actioncliptest00001.avi",
+        text="Describe this video. DO NOT describe the person or people in the video by anything other than `person`, `people`, or that person's or persons' occupation(s). Keep the overall video description detailed while excluding information about anyone in the video's name, age, sex, gender, pronouns, race, hair color, hairstyle, facial or other physical characteristics.",
+    ))
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
 

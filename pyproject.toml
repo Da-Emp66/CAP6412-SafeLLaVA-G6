@@ -38,6 +38,11 @@ dependencies = [
     # "auto_gptq",
     "addict>=2.4.0",
     "pytubefix>=8.12.2",
+    "deepspeed>=0.16.4",
+    "pyautogui>=0.9.54",
+    "python-xlib>=0.33",
+    "pydirectinput>=1.0.4",
+    "moviepy>=1.0.3",
 ]
 
 [tool.uv]
