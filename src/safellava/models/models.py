@@ -12,6 +12,7 @@ from transformers import (
 from qwen_vl_utils import process_vision_info
 
 from safellava.interfaces import BaseMultiModalLanguageModel
+from safellava.tuning.modelscope_tuning import TunedMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
 from safellava.models.less_performing_models import LlavaOnevision
 from safellava.models.models_of_unknown_quality import Phi_3_5_Multimodal
@@ -263,7 +264,10 @@ def example_instantiation_and_inference(
     video: Optional[str] = None,
     prompt: Optional[str] = None,
 ):
-    vlm = instantiate_model_based_on_model_map(model)
+    try:
+        vlm = instantiate_model_based_on_model_map(model)
+    except KeyError as _:
+        vlm = TunedMultiModalLanguageModel("", model)
 
     if video is None:
         video = input("Path to video >")
@@ -292,8 +296,17 @@ if __name__ == "__main__":
             "MiniCPM-o-2_6",
             "Llava-OneVision-Qwen2-0.5B",
             "Llava-Interleave-Qwen2-0.5B",
+            "tuned",
         ],
         required=True,
+    )
+    parser.add_argument(
+        "-t",
+        "--tuned",
+        type=str,
+        help="Path to tuned model checkpoint",
+        default=None,
+        required=False,
     )
     parser.add_argument(
         "-v",
@@ -314,7 +327,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     example_instantiation_and_inference(
-        args.model,
+        args.model if args.model != "tuned" else args.tuned,
         args.video,
         args.prompt,
     )

@@ -14,3 +14,31 @@ The folder structure of this project is organized as follows:
     ./
     |---notebooks/      # Colab notebooks and recipes
 
+
+### Use
+
+One of the processes for our dataset curation and tuning is as follows:
+
+    # Navigate to the proper directory
+    cd src/safellava
+
+    # Curate a dataset
+    uv run dataset/privacy_dataset.py -p curate -d hollywood2
+
+    # Merge two curated datasets
+    uv run dataset/privacy_dataset.py -p merge -d privacy_preservation/activitynet_curated/datapoints.csv,privacy_preservation/hollywood2_curated/datapoints.csv
+
+    # Clean a dataset
+    uv run dataset/privacy_dataset.py -p clean -d activitynet_curated_datapoints-hollywood2_curated_datapoints_merged.csv
+
+    # Prepare a dataset for tuning
+    uv run dataset/privacy_dataset.py -p clean -d activitynet_curated_datapoints-hollywood2_curated_datapoints_merged_cleaned.csv
+
+    # Upload the dataset to your Google Drive
+
+    # Go to and run the tuning notebook https://colab.research.google.com/drive/1r_1e4Opo6GB1QeOvgoCs0FRQljE_gyRc?usp=sharing
+    # This should give you a model as output.
+
+    # Infer on your tuned model
+    uv run dataset/privacy_dataset.py -m tuned -t <path-to-tuned-model-checkpoint>
+

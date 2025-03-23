@@ -187,12 +187,13 @@ class ModelScopeSwiftTuning:
             plot_images(images_dir, self.training_args.logging_dir, ['train/loss'], 0.9)
             image = Image.open(os.path.join(images_dir, 'train_loss.png'))
             image.show()
-            
 
-def main():
-    tuner = ModelScopeSwiftTuning()
-    tuner("llava-hf/llava-onevision-qwen2-0.5b-ov-hf", None)
 
-if __name__ == "__main__":
-    main()
+# def main():
+    # tuner = ModelScopeSwiftTuning()
+    # tuner("llava-hf/llava-onevision-qwen2-0.5b-ov-hf", None)
+
+
+# if __name__ == "__main__":
+#     main()
 

@@ -488,7 +488,7 @@ def generate_samples_for_vqa_pair(
 
 def process_dataset(
     dataset_names: str,
-    process: Literal["curate", "clean", "merge"],
+    process: Literal["curate", "merge", "clean", "export"],
     model: str,
 ):
     dataset_names = dataset_names.split(",")
@@ -624,8 +624,9 @@ if __name__ == "__main__":
         help="Process to perform on dataset",
         choices=[
             "curate",
-            "clean",
             "merge",
+            "clean",
+            "export",
         ],
         required=True,
     )
