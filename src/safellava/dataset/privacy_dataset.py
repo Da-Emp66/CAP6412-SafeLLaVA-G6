@@ -637,6 +637,18 @@ def process_dataset(
             destination_csv=f"{'-'.join(processed_names)}_merged.csv",
         )
 
+    elif process == "export":
+
+        curator = VQADataCuratorConstruct()
+        
+        processed_names = ["_".join(os.path.splitext(dataset_name)[0].split("/")[-2:]) for dataset_name in dataset_names]
+
+        for dataset, processed_name in zip(dataset_names, processed_names):
+            curator.prepare_dataset_for_swift_tuning(
+                dataset,
+                destination_json=f"{processed_name}_tuning.json",
+            )
+
     else:
 
         raise NotImplementedError()

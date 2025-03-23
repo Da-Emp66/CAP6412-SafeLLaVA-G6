@@ -273,6 +273,8 @@ class VQADataCuratorConstruct:
                 "images": [row["media_path"]] if media_type == MediaType.IMAGE else [],
             }))
 
+        lines = list(map(lambda json_datapoint: f"{json_datapoint}\n", lines))
+
         with open(destination_json, "w") as dest:
             dest.writelines(lines)
             dest.close()
