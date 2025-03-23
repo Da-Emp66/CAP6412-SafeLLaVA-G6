@@ -4,6 +4,13 @@ A research effort into removing Personally Identifiable Information (PII) from M
 
 ### Install
 
+#### Package
+
+    # Using pip
+    pip install git+https://github.com/Da-Emp66/CAP6412-SafeLLaVA-G6.git
+
+#### From Source
+
     # Via script
     . install-local.sh
 
