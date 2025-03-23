@@ -4,7 +4,12 @@ A research effort into removing Personally Identifiable Information (PII) from M
 
 ### Install
 
+    # Via script
     . install-local.sh
+
+    # Or direct
+    curl -LsSf https://astral.sh/uv/install.sh | sh # or pip install uv
+    cd src/safellava && uv sync
 
 
 ### Folder Structure
@@ -12,7 +17,8 @@ A research effort into removing Personally Identifiable Information (PII) from M
 The folder structure of this project is organized as follows:
 
     ./
-    |---notebooks/      # Colab notebooks and recipes
+     |---notebooks/      # Colab notebooks and recipes
+     |---src/safellava/     # Python package source code folder, importable in notebooks
 
 
 ### Use
