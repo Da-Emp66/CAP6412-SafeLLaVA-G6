@@ -23,7 +23,7 @@ class VQADataPoint(NamedTuple):
     answer_type: AnswerType
 
 class VQADataCuratorConstruct:
-    def __init__(self, vlm: BaseMultiModalLanguageModel):
+    def __init__(self, vlm: Optional[BaseMultiModalLanguageModel] = None):
         self.vlm = vlm
 
     def curate_dataset(
@@ -216,13 +216,26 @@ class VQADataCuratorConstruct:
 
         loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
         
-        for idx, row in enumerate(loaded_dataset):
+        def alter_row(row):
             for postprocessing_func, key in postprocessing_funcs_to_keys:
                 row[key] = postprocessing_func(row[key])
+            return row
 
-        loaded_dataset.to_csv(
+        loaded_dataset = loaded_dataset.map(alter_row)
+
+        loaded_dataset.to_pandas().to_csv(
             destination_csv,
             sep='|',
+        )
+
+    def merge_existing_datasets(self, *dataset_csvs: List[str], destination_csv: str) -> str:
+        loaded_dataset = load_dataset("csv", data_files=dataset_csvs, delimiter="|")["train"]
+        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
+
+        loaded_dataset.to_pandas().to_csv(
+            destination_csv,
+            sep='|',
+            index=True,
         )
 
     def prepare_dataset_for_swift_tuning(
@@ -238,7 +251,7 @@ class VQADataCuratorConstruct:
             dataset_csv (str): _description_
         """
         
-        loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
+        loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter='|')["train"]
 
         lines = []
         for idx, row in enumerate(loaded_dataset):

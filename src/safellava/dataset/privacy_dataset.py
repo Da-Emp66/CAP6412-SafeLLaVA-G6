@@ -488,13 +488,14 @@ def generate_samples_for_vqa_pair(
 
 def process_dataset(
     dataset_names: str,
-    process: Literal["curate", "clean"],
+    process: Literal["curate", "clean", "merge"],
     model: str,
 ):
     dataset_names = dataset_names.split(",")
     random.seed(87)
 
     if process == "curate":
+
         curatable_datasets = [
             
             #####################################################
@@ -580,9 +581,9 @@ def process_dataset(
                 **dataset_kwargs,
             )
 
-    else:
+    elif process == "clean":
 
-        curator = VQADataCuratorConstruct(vlm)
+        curator = VQADataCuratorConstruct()
 
         for dataset in dataset_names:
             curator.postprocess_existing_datasets(
@@ -590,6 +591,21 @@ def process_dataset(
                 destination_csv=f"{dataset.strip('.csv')}_cleaned.csv",
                 postprocess_answer=classical_remove_private_attributes_from_sentence,
             )
+
+    elif process == "merge":
+
+        curator = VQADataCuratorConstruct()
+
+        processed_names = ["_".join(os.path.splitext(dataset_name)[0].split("/")[-2:]) for dataset_name in dataset_names]
+
+        curator.merge_existing_datasets(
+            *dataset_names,
+            destination_csv=f"{'-'.join(processed_names)}_merged.csv",
+        )
+
+    else:
+
+        raise NotImplementedError()
 
 
 if __name__ == "__main__":
@@ -609,6 +625,7 @@ if __name__ == "__main__":
         choices=[
             "curate",
             "clean",
+            "merge",
         ],
         required=True,
     )
@@ -634,7 +651,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     process_dataset(
-        args.dataset,
+        args.datasets,
         args.process,
         args.model,
     )
