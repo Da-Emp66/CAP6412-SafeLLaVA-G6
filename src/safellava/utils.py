@@ -134,6 +134,7 @@ def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube
         yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
         stream = yt.streams.get_highest_resolution()
         if stream is not None:
+            yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
             stream = yt.streams.first()
         filename = f"{stream.default_filename.split('.')[0]}.mp4"
         os.makedirs(download_folder, exist_ok=True)
