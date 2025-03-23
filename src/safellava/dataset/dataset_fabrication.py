@@ -1,4 +1,5 @@
 from enum import Enum
+import json
 import os
 import shutil
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Union
@@ -22,7 +23,7 @@ class VQADataPoint(NamedTuple):
     answer_type: AnswerType
 
 class VQADataCuratorConstruct:
-    def __init__(self, vlm: BaseMultiModalLanguageModel):
+    def __init__(self, vlm: Optional[BaseMultiModalLanguageModel] = None):
         self.vlm = vlm
 
     def curate_dataset(
@@ -201,13 +202,13 @@ class VQADataCuratorConstruct:
         self,
         dataset_csv: List[str],
         destination_csv: List[str],
-        postprocess_video: Optional[Callable] = None,
-        postprocess_question: Optional[Callable] = None,
-        postprocess_answer: Optional[Callable] = None,
-        postprocess_answer_type: Optional[Callable] = None,
+        postprocess_media: Optional[Callable] = lambda x: x,
+        postprocess_question: Optional[Callable] = lambda x: x,
+        postprocess_answer: Optional[Callable] = lambda x: x,
+        postprocess_answer_type: Optional[Callable] = lambda x: x,
     ):
         postprocessing_funcs_to_keys = [
-            (postprocess_video, "video"),
+            (postprocess_media, "media_path"),
             (postprocess_question, "question"),
             (postprocess_answer, "answer"),
             (postprocess_answer_type, "answer_type"),
@@ -215,11 +216,66 @@ class VQADataCuratorConstruct:
 
         loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
         
-        for idx, row in enumerate(loaded_dataset):
+        def alter_row(row):
             for postprocessing_func, key in postprocessing_funcs_to_keys:
                 row[key] = postprocessing_func(row[key])
+            return row
 
-        loaded_dataset.to_csv(
+        loaded_dataset = loaded_dataset.map(alter_row)
+
+        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
+
+        loaded_dataset.to_pandas().to_csv(
             destination_csv,
             sep='|',
+            index=True,
         )
+
+    def merge_existing_datasets(self, *dataset_csvs: List[str], destination_csv: str) -> str:
+        loaded_dataset = load_dataset("csv", data_files=dataset_csvs, delimiter="|")["train"]
+        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
+
+        loaded_dataset.to_pandas().to_csv(
+            destination_csv,
+            sep='|',
+            index=True,
+        )
+
+    def prepare_dataset_for_swift_tuning(
+            self,
+            dataset_csv: str,
+            destination_json: str,
+        ):
+        """Convert each row into a line like:
+        {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+        and place the rows into an improper JSON file
+        
+        Args:
+            dataset_csv (str): _description_
+        """
+        
+        loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter='|')["train"]
+
+        lines = []
+        for idx, row in enumerate(loaded_dataset):
+            media_type = get_media_type(row["media_path"])
+
+            if media_type == MediaType.IMAGE_OR_VIDEO:
+                continue
+
+            lines.append(json.dumps({
+                "messages": [
+                    {"role": "system", "content": "You are a helpful and harmless assistant."},
+                    {"role": "user", "content": f"<{media_type.value}>{row['question']}"},
+                    {"role": "assistant", "content": row["answer"]},
+                ],
+                "videos": [row["media_path"]] if media_type == MediaType.VIDEO else [],
+                "images": [row["media_path"]] if media_type == MediaType.IMAGE else [],
+            }))
+
+        lines = list(map(lambda json_datapoint: f"{json_datapoint}\n", lines))
+
+        with open(destination_json, "w") as dest:
+            dest.writelines(lines)
+            dest.close()
+        

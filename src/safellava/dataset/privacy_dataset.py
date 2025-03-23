@@ -1,15 +1,16 @@
+import argparse
 import os
 import random
 import re
-from typing import List, Optional, Set
+from typing import Callable, List, Literal, Optional, Set
 from datasets import load_dataset
 import kagglehub
 import tarfile
 import pandas as pd
 import yaml
-from safellava.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
+from safellava.dataset.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
-from safellava.models import Qwen2_VL_Instruct
+from safellava.models.models import instantiate_model_based_on_model_map
 from safellava.utils import MediaType, load_online_files
 
 #####################################################
@@ -49,8 +50,10 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
     "male",
+    "guy",
     "woman",
     "female",
+    "gal",
     "boy",
     "girl",
     "adult",
@@ -62,8 +65,10 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL = [
     "people",
     "men",
     "males",
+    "guys",
     "women",
     "females",
+    "gals",
     "boys",
     "girls",
     "adults",
@@ -115,7 +120,7 @@ REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY = {
     ],
     "possessive": [
         "his or her",
-        "theirs",
+        "their",
         "the person's",
     ],
 }
@@ -145,16 +150,46 @@ NON_PRIVATE_DESCRIPTION_TEMPLATES = [
     f"Describe the {{media}}. {PROTECTION_PROMPT}",
 ]
 
+def pad_word_or_phrase(phrase: str) -> str:
+    return rf" {phrase} "
+
+def pad_word_or_phrase_at_the_end_of_a_sentence(phrase: str) -> str:
+    return rf" {phrase}."
+
+def pad_word_or_phrase_in_the_middle_of_a_sentence(phrase: str) -> str:
+    return rf" {phrase},"
+
+def pad_word_or_phrase_at_the_beginning_of_a_sentence(phrase: str) -> str:
+    return rf" {phrase.capitalize()} "
+
 # Cleaning
 def classical_remove_private_attributes_from_sentence(
     original_sentence: str,
-    grammatically_lenient_replacement_pronouns: bool = True
+    ablations: List[Callable] = [
+        pad_word_or_phrase,
+        pad_word_or_phrase_at_the_beginning_of_a_sentence,
+        pad_word_or_phrase_in_the_middle_of_a_sentence,
+        pad_word_or_phrase_at_the_end_of_a_sentence,
+    ],
+    grammatically_lenient_replacement_pronouns: bool = True,
 ) -> str:
-    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL), original_sentence)
-    processed_sentence = re.sub(fr"({'|'.join(STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)})", random.choice(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE), original_sentence)
+    processed_sentence = original_sentence
+
+    for ablation in ablations:
+        processed_sentence = re.sub(fr"({'|'.join(list(map(ablation, STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL)))})".replace(".", r"\."), random.choice(list(map(ablation, NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL))), processed_sentence)
+    
+    for ablation in ablations:
+        processed_sentence = re.sub(fr"({'|'.join(list(map(ablation, STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE)))})".replace(".", r"\."), random.choice(list(map(ablation, NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE))), processed_sentence)
+    
     pronoun_replacement_options = (REPLACEMENT_NEUTRAL_PRONOUNS_WITH_GRAMMATICAL_LENIENCY if grammatically_lenient_replacement_pronouns else REPLACEMENT_NEUTRAL_PRONOUNS)
-    for pronoun_type in PROTECTED_PRONOUNS:
-        processed_sentence = re.sub(fr"({'|'.join(PROTECTED_PRONOUNS[pronoun_type])})", random.choice(pronoun_replacement_options[pronoun_type]), processed_sentence)
+    for ablation in ablations:
+        for pronoun_type in PROTECTED_PRONOUNS:
+            processed_sentence = re.sub(fr"({'|'.join(list(map(ablation, PROTECTED_PRONOUNS[pronoun_type])))})".replace(".", r"\."), random.choice(list(map(ablation, pronoun_replacement_options[pronoun_type]))), processed_sentence)
+    
+    # Patch the cases that get replaced twice
+    for val in pronoun_replacement_options["possessive"]:
+        processed_sentence = processed_sentence.replace(f"him or {val}", val)
+
     return processed_sentence
 
 #####################################################
@@ -485,87 +520,185 @@ def generate_samples_for_vqa_pair(
 # Run Dataset Curator
 #####################################################
 
-def main():
+def process_dataset(
+    dataset_names: str,
+    process: Literal["curate", "merge", "clean", "export"],
+    model: str,
+):
+    dataset_names = dataset_names.split(",")
     random.seed(87)
 
-    datasets_to_curate = [
-        
-        #####################################################
-        # Videos
-        #####################################################
+    if process == "curate":
 
-        {
-            "dataset": "hollywood2",
-            "media_key": "video",
-            "dataset_obtain_strategy": load_hollywood2,
-            "dataset_obtain_kwargs": {
-                "urls": [
-                    "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz"
-                ],
-                "filename_filter": [
-                    "autoauto"
-                ],
+        curatable_datasets = [
+            
+            #####################################################
+            # Videos
+            #####################################################
+
+            {
+                "dataset": "hollywood2",
+                "media_key": "video",
+                "dataset_obtain_strategy": load_hollywood2,
+                "dataset_obtain_kwargs": {
+                    "urls": [
+                        "ftp://ftp.irisa.fr/local/vistas/actions/Hollywood2-actions.tar.gz"
+                    ],
+                    "filename_filter": [
+                        "autoauto"
+                    ],
+                },
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                },
             },
-            "generate_samples_kwargs": {
-                "must_contain_person": False,
+            {
+                "dataset": "lmms-lab/ActivityNetQA",
+                "media_key": lambda row: row["video_name"],
+                "question_key": "question",
+                "answer_key": "answer",
+                "approximate_max_sample_count_to_obtain": 200,
             },
-        },
-        # {
-        #     "dataset": "lmms-lab/ActivityNetQA",
-        #     "media_key": lambda row: row["video_name"],
-        #     "question_key": "question",
-        #     "answer_key": "answer",
-        #     "approximate_max_sample_count_to_obtain": 200,
-        # },
-        # {
-        #     "dataset": "lmms-lab/VideoDetailCaption",
-        #     "media_key": lambda row: row["video_name"],
-        #     "question_key": "question",
-        #     "answer_key": "answer",
-        #     "approximate_max_sample_count_to_obtain": 200,
-        # },
-        
-        #####################################################
-        # Images
-        #####################################################
+            {
+                "dataset": "lmms-lab/VideoDetailCaption",
+                "media_key": lambda row: row["video_name"],
+                "question_key": "question",
+                "answer_key": "answer",
+                "approximate_max_sample_count_to_obtain": 200,
+            },
+            
+            #####################################################
+            # Images
+            #####################################################
 
-        # {
-        #     "dataset": "dai22dai/video",
-        #     "media_key": lambda row: row["image"],
-        #     "approximate_max_sample_count_to_obtain": 200,
-        #     "generate_samples_kwargs": {
-        #         "media_type": MediaType.IMAGE,
-        #         "must_contain_person": False,
-        #         "keep_original_vqa_pair": False,
-        #     },
-        # },
-        # {
-        #     "dataset": "visogender",
-        #     "dataset_obtain_strategy": load_visogender,
-        #     "dataset_obtain_kwargs": {
-        #         "urls": [
-        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
-        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
-        #             "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
-        #         ],
-        #     },
-        #     "media_key": "URL type (Type NA if can't find)",
-        #     "approximate_max_sample_count_to_obtain": 200,
-        #     "generate_samples_kwargs": {
-        #         "media_type": MediaType.IMAGE,
-        #         "must_contain_person": False,
-        #     }
-        # },
-    ]
+            {
+                "dataset": "dai22dai/video",
+                "media_key": lambda row: row["image"],
+                "approximate_max_sample_count_to_obtain": 200,
+                "generate_samples_kwargs": {
+                    "media_type": MediaType.IMAGE,
+                    "must_contain_person": False,
+                    "keep_original_vqa_pair": False,
+                },
+            },
+            {
+                "dataset": "visogender",
+                "dataset_obtain_strategy": load_visogender,
+                "dataset_obtain_kwargs": {
+                    "urls": [
+                        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
+                        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
+                        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
+                    ],
+                },
+                "media_key": "URL type (Type NA if can't find)",
+                "approximate_max_sample_count_to_obtain": 200,
+                "generate_samples_kwargs": {
+                    "media_type": MediaType.IMAGE,
+                    "must_contain_person": False,
+                }
+            },
+        ]
 
-    vlm = Qwen2_VL_Instruct()
-    curator = VQADataCuratorConstruct(vlm)
+        vlm = instantiate_model_based_on_model_map(model)
 
-    for dataset_kwargs in datasets_to_curate:
-        curator.curate_dataset(
-            generate_samples_strategy=generate_samples_for_vqa_pair,
-            **dataset_kwargs
+        print(f"Using {model} to curate dataset...")
+
+        curator = VQADataCuratorConstruct(vlm)
+
+        for dataset_kwargs in curatable_datasets:
+            if dataset_kwargs["dataset"] not in dataset_names:
+                continue
+
+            curator.curate_dataset(
+                generate_samples_strategy=generate_samples_for_vqa_pair,
+                **dataset_kwargs,
+            )
+
+    elif process == "clean":
+
+        curator = VQADataCuratorConstruct()
+
+        for dataset in dataset_names:
+            curator.postprocess_existing_datasets(
+                dataset_csv=dataset,
+                destination_csv=f"{dataset.strip('.csv')}_cleaned.csv",
+                postprocess_answer=classical_remove_private_attributes_from_sentence,
+            )
+
+    elif process == "merge":
+
+        curator = VQADataCuratorConstruct()
+
+        processed_names = ["_".join(os.path.splitext(dataset_name)[0].split("/")[-2:]) for dataset_name in dataset_names]
+
+        curator.merge_existing_datasets(
+            *dataset_names,
+            destination_csv=f"{'-'.join(processed_names)}_merged.csv",
         )
 
+    elif process == "export":
+
+        curator = VQADataCuratorConstruct()
+        
+        processed_names = ["_".join(os.path.splitext(dataset_name)[0].split("/")[-2:]) for dataset_name in dataset_names]
+
+        for dataset, processed_name in zip(dataset_names, processed_names):
+            curator.prepare_dataset_for_swift_tuning(
+                dataset,
+                destination_json=f"{processed_name}_tuning.json",
+            )
+
+    else:
+
+        raise NotImplementedError()
+
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-d",
+        "--datasets",
+        type=str,
+        help="The names of the datasets; comma delimited",
+        required=True,
+    )
+    parser.add_argument(
+        "-p",
+        "--process",
+        type=str,
+        help="Process to perform on dataset",
+        choices=[
+            "curate",
+            "merge",
+            "clean",
+            "export",
+        ],
+        required=True,
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        help="Model to try out",
+        choices=[
+            "Qwen2-VL",
+            "Qwen2.5-VL",
+            "Phi-3.5-Multimodal",
+            "Ovis2-1B",
+            "Ovis2-2B",
+            "Ovis2-4B",
+            "MiniCPM-o-2_6",
+            "Llava-OneVision-Qwen2-0.5B",
+            "Llava-Interleave-Qwen2-0.5B",
+        ],
+        default="Ovis2-1B",
+        required=False,
+    )
+    args = parser.parse_args()
+    
+    process_dataset(
+        args.datasets,
+        args.process,
+        args.model,
+    )

@@ -12,6 +12,7 @@ from PIL import Image
 import cv2
 import numpy as np
 import pytube
+import pytubefix
 import requests
 
 #####################################################
@@ -130,9 +131,13 @@ def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube
         str: _description_
     """
     if use_pytube:
-        yt = pytube.YouTube(f"https://www.youtube.com/watch?v={video_id}")
+        yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
         stream = yt.streams.get_highest_resolution()
-        filename = f"{stream.default_filename.replace('.')[:-1]}.mp4"
+        if stream is None:
+            yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
+            stream = yt.streams.first()
+        filename = f"{stream.default_filename.split('.')[0]}.mp4"
+        os.makedirs(download_folder, exist_ok=True)
         return stream.download(
             output_path=download_folder,
             filename=filename,

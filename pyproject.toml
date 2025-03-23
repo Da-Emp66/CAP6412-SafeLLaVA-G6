@@ -20,11 +20,11 @@ dependencies = [
     "pillow>=11.1.0",
     "quanto>=0.2.0",
     "scikit-learn>=1.2.2",
-    "setuptools>=75.8.0",
+    "setuptools>=69.5.1",
     "torch>=2.5.1",
     "torchvision>=0.20.1",
-    "transformers==4.48.0",
-    "llava==1.2.2.post1",
+    "transformers>=4.48.0",
+    # "llava==1.2.2.post1",
     "diffusers>=0.32.2",
     "scipy>=1.15.1",
     "safetensors>=0.5.2",
@@ -32,8 +32,12 @@ dependencies = [
     "datasets>=3.3.2",
     "pytube>=15.0.0",
     "kagglehub>=0.3.10",
-    "ms-swift>=1.4.0",
+    "ms-swift>=3.2.1",
     "qwen-vl-utils>=0.0.10",
+    # "gptqmodel",
+    # "auto_gptq",
+    "addict>=2.4.0",
+    "pytubefix>=8.12.2",
 ]
 
 [tool.uv]
@@ -52,8 +56,10 @@ torch = [
 torchvision = [
   { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+gptqmodel = { git = "https://github.com/ZX-ModelCloud/GPTQModel.git" }
+# auto_gptq = { git = "https://github.com/YuzaChongyi/AutoGPTQ.git" }
 
-[[tool.uv.dependency-metadata]]
-name = "llava"
-version = "1.2.2.post1"
-requires-dist = []
+# [[tool.uv.dependency-metadata]]
+# name = "llava"
+# version = "1.2.2.post1"
+# requires-dist = []
