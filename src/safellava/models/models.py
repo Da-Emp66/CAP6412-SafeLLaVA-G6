@@ -12,6 +12,7 @@ from transformers import (
 from qwen_vl_utils import process_vision_info
 
 from safellava.interfaces import BaseMultiModalLanguageModel
+from safellava.models.api_models import GPT
 from safellava.tuning.modelscope_tuning import TunedMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
 from safellava.models.less_performing_models import LlavaOnevision
@@ -239,6 +240,7 @@ class LlavaInterleave(BaseMultiModalLanguageModel):
         pass
 
 MODEL_MAP = {
+    "GPT": (GPT, {}),
     "Qwen2-VL": (QwenVL_Instruct, { "model_id": "Qwen/Qwen2-VL-2B-Instruct" }),
     "Qwen2.5-VL": (QwenVL_Instruct, {}),
     "Phi-3.5-Multimodal": (Phi_3_5_Multimodal, {}),
@@ -287,6 +289,7 @@ if __name__ == "__main__":
         type=str,
         help="Model to try out",
         choices=[
+            "GPT",
             "Qwen2-VL",
             "Qwen2.5-VL",
             "Phi-3.5-Multimodal",

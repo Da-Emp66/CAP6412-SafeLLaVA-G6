@@ -45,6 +45,7 @@ dependencies = [
     "moviepy>=1.0.3",
     "python-dotenv>=1.1.0",
     "openai>=1.67.0",
+    "decord>=0.6.0",
 ]
 
 [tool.uv]
