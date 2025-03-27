@@ -15,7 +15,7 @@ from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models.api_models import GPT
 from safellava.tuning.modelscope_tuning import TunedMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
-from safellava.models.less_performing_models import LlavaOnevision
+from safellava.models.low_quality_models import LlavaOnevision
 from safellava.models.models_of_unknown_quality import Phi_3_5_Multimodal
 
 ##########################################################################################################
