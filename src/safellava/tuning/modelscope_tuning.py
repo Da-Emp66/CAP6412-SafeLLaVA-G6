@@ -2,8 +2,9 @@
 import os
 import threading
 import time
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
+from safellava.dataset.privacy_dataset import PROTECTION_PROMPT
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.utils import load_media
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -29,10 +30,6 @@ from swift.llm.infer import SwiftInfer
 from swift.llm import InferArguments
 from transformers.hf_argparser import HfArgumentParser
 
-# Using https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb
-# as a guide...
-
-
 class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
     def __init__(
         self,
@@ -53,8 +50,16 @@ class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
         
         self.engine = SwiftInfer(self.arguments)
 
-    def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
-        # _media_type, frames, _num_frames = load_media(video, 1)
+    def __call__(
+        self,
+        video: Optional[str] = None,
+        text: Optional[str] = None,
+        request_arguments: Dict[str, Any] = {
+            "max_tokens": 200,
+            "temperature": 0.2,
+        },
+    ) -> str:
+        
         infer_request = InferRequest(
             messages=[
                 {
@@ -68,10 +73,37 @@ class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
             ],
             videos=[video],
         )
-        request_config = RequestConfig(max_tokens=200, temperature=0.2)
-        return self.engine.infer_single(infer_request, request_config)
+        request_config = RequestConfig(**request_arguments)
+
+        res_or_gen = self.engine.infer(
+            [infer_request],
+            request_config,
+            template=self.engine.template,
+            use_tqdm=False,
+            **self.engine.infer_kwargs
+        )[0]
+        
+        if request_config and request_config.stream:
+            response = ''
+            for res in res_or_gen:
+                delta = res.choices[0].delta.content
+                print(delta, end='', flush=True)
+                response += delta
+        else:
+            response = res_or_gen.choices[0].message.content
+            
+        return response
+
 
 class ModelScopeSwiftTuning:
+    """NOT CURRENTLY USED.
+    Please see the tuning notebook for real fine-tuning procedures.
+
+    To Finish Implementation:
+    Use https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb
+    as a guide.
+    """
+
     def __init__(self, seed: int = 42):
         self.logger = get_logger()
         self.train_output_dir = "output"
@@ -217,7 +249,7 @@ def main():
 
     print(tuned_model(
         video="privacy_preservation/hollywood2_curated/videos/actioncliptest00001.avi",
-        text="Describe this video. DO NOT describe the person or people in the video by anything other than `person`, `people`, or that person's or persons' occupation(s). Keep the overall video description detailed while excluding information about anyone in the video's name, age, sex, gender, pronouns, race, hair color, hairstyle, facial or other physical characteristics.",
+        text=f"Describe this video. {PROTECTION_PROMPT.replace("{media}", "video")}",
     ))
 
 if __name__ == "__main__":

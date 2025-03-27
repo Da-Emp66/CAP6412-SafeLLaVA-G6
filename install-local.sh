@@ -50,6 +50,9 @@ setup_uv () {
 }
 
 install_project () {
+    # Install system-wide dependencies
+    sudo apt update -y && \
+        sudo apt install libmpich-dev -y
     # Install the project
     uv sync --no-build-isolation
 }

@@ -30,6 +30,9 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "pronoun(s)",
     "hair color",
     "hairstyle",
+    "body size",
+    "height",
+    "weight",
     "facial or other physical characteristics",
     "uniquely identifiable information",
 ]

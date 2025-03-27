@@ -1,3 +1,4 @@
+import base64
 from enum import Enum
 from io import BytesIO, StringIO
 import os
@@ -11,7 +12,7 @@ import warnings
 from PIL import Image
 import cv2
 import numpy as np
-import pytube
+# import pytube
 import pytubefix
 import requests
 
@@ -196,6 +197,15 @@ def open_images(media, verbose=False):
         warnings.warn(f"{media} is not in a supported format. You must have a preprocessing function defined or a non-standard model for this to work.")
 
     return media
+
+def convert_image_to_base64(image: Any) -> str:
+    image = open_images(image)
+
+    buffered = BytesIO()
+    image.save(buffered, format="JPEG")
+    b64_encoded_image = base64.b64encode(buffered.getvalue())
+
+    return b64_encoded_image
 
 def get_video_length_seconds(video_path: str) -> float:
     video = cv2.VideoCapture(video_path)
