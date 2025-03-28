@@ -278,35 +278,51 @@ def load_vatex_video_captioning(
 
     os.makedirs(download_dir, exist_ok=True)
 
+    # Get the name of the output CSV and if it exists
     output_csv = os.path.join(download_dir, f"{dataset_name}.csv")
     output_csv_exists = os.path.join(output_csv)
 
     if not output_csv_exists:
+        # Download the dataset JSON
         raw_filepath = load_online_files(urls, downloads_dir=download_dir)[0]
 
+        # Read the dataset JSON into memory
         with open(raw_filepath) as raw_file:
             vatex_video_captioning_json = json.loads(raw_file.read())
             raw_file.close()
         
+        # Set up the column contents
         videos = []
         questions = []
         answers = []
         
-        for json_obj in vatex_video_captioning_json:
+        # Loop through all potential datapoints
+        for idx, json_obj in enumerate(vatex_video_captioning_json):
+            # Grab the YouTube ID and the start and end time in seconds
             youtube_id, start_time, end_time = tuple(json_obj["videoID"].split('_'))
-            filepath_downloaded = download_youtube_video(youtube_id, download_folder=os.path.join(download_dir, "videos"))
-            original_video_filename, video_fileext = os.path.splitext(filepath_downloaded)
-            video_fileext = video_fileext.removeprefix('.')
-            trimmed_video_filepath = f"{original_video_filename}_trimmed.{video_fileext}"
-            trim_video_cv2(filepath_downloaded, trimmed_video_filepath, start_time, end_time)
-            os.path.remove(filepath_downloaded)
+            
+            try:
+                # Download and trim the video to the expected window and length
+                filepath_downloaded = download_youtube_video(youtube_id, download_folder=os.path.join(download_dir, "videos"))
+                original_video_filename, video_fileext = os.path.splitext(filepath_downloaded)
+                video_fileext = video_fileext.removeprefix('.')
+                trimmed_video_filepath = f"{original_video_filename}_trimmed.{video_fileext}"
+                trim_video_cv2(filepath_downloaded, trimmed_video_filepath, start_time, end_time)
+                os.path.remove(filepath_downloaded)
+            except Exception as e:
+                print(f"Skipping sample at `idx={idx}` with `videoID={json_obj['videoID']}`: `{e}`")
+                continue
+
+            # Add the rows
             possible_captions = json_obj["enCap"]
             videos += [trimmed_video_filepath for _ in range(possible_captions)]
             questions += [random.choice(DESCRIPTION_TEMPLATES) for _ in range(possible_captions)]
             answers += possible_captions
 
-        pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv)
+    # Write to the CSV file
+    pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv)
     
+    # Return the dataset loader
     return load_dataset("csv", data_files=[output_csv])
 
 def load_video_story(
