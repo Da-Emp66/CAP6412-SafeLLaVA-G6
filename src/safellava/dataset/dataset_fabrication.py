@@ -168,26 +168,32 @@ class VQADataCuratorConstruct:
                     **generate_samples_kwargs,
                 )
 
-                samples = [(list(sample[:-1]) + [sample[-1].value] + [idx]) for sample in samples]
-
-                # Add to the number of samples we have obtained
-                num_samples_obtained += len(samples)
-
                 # Copy the media into the proper directory
                 media_type = get_media_type(media)
 
                 if media_type == MediaType.IMAGE:
                     os.makedirs(images_directory, exist_ok=True)
-                    shutil.copy(media, images_directory)
+                    media = str(shutil.copy(media, images_directory))
                 elif media_type == MediaType.VIDEO:
                     os.makedirs(videos_directory, exist_ok=True)
-                    shutil.copy(media, videos_directory)
+                    media = str(shutil.copy(media, videos_directory))
                 else:
                     warnings.warn(f"Media type of {media} unknown.")
                     os.makedirs(unknown_media_directory, exist_ok=True)
-                    shutil.copy(media, unknown_media_directory)
+                    media = str(shutil.copy(media, unknown_media_directory))
 
-                # Add the new samples
+                # Fix the media path in the newly generated samples
+                for idx, sample in enumerate(samples):
+                    sample.media_path = media
+                    samples[idx] = sample
+
+                # Convert the new samples into a format readable by pandas (listify the named tuples)
+                samples = [(list(sample[:-1]) + [sample[-1].value] + [idx]) for sample in samples]
+
+                # Add to the number of samples we have obtained
+                num_samples_obtained += len(samples)
+
+                # Store the new samples
                 current_df = pd.concat([current_df, pd.DataFrame(samples, columns=columns)], ignore_index=True)
 
                 # Offload the samples to the destination CSV file

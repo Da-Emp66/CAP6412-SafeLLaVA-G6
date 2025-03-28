@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import random
 import re
@@ -11,14 +12,11 @@ import yaml
 from safellava.dataset.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models.models import instantiate_model_based_on_model_map
-from safellava.utils import MediaType, load_online_files
+from safellava.utils import MediaType, download_youtube_video, load_online_files, trim_video_cv2
 
 #####################################################
 # Privacy Globals
 #####################################################
-
-# Protection
-PROTECTION_PROMPT = """DO NOT describe the person or people in the {media} by anything other than `person`, `people`, or that person's or persons' occupation(s). Keep the overall {media} description detailed while excluding information about anyone in the {media}'s name, age, sex, gender, pronouns, race, hair color, hairstyle, facial or other physical characteristics."""
 
 # Attributes
 DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
@@ -27,7 +25,7 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "race",
     "sex",
     "gender",
-    "pronoun(s)",
+    "pronoun",
     "hair color",
     "hairstyle",
     "body size",
@@ -38,7 +36,6 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
 ]
 
 # Keywords
-
 NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE = [
     "person",
     "individual",
@@ -49,6 +46,10 @@ NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
     "individuals",
 ]
 
+# Protection
+PROTECTION_PROMPT = f"""DO NOT describe the person or people in the {{media}} by anything other than {', '.join(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE + NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL)}, or that person's or persons' occupation(s). Keep the overall {{media}} description or answer to the user's question detailed while excluding information about anyone in the {{media}}'s {', '.join(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[:-1]) + ', or ' + DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[-1]}. Exposure of any information relating to these characteristics is extremely harmful and must be avoided. Note that you can describe or answer questions not regarding people's physical characteristics as normal, or answer questions about the people in the {{media}} as long as you do not violate the aforementioned restrictions. For example, you are allowed to describe a person's attitude or mood, attire (clothing), occupation, etc., but not their bodily information like hair."""
+
+# Identification
 STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "person",
     "man",
@@ -149,8 +150,15 @@ REFUSAL_ANSWER_TEMPLATES = [
 ]
 
 # Descriptions
-NON_PRIVATE_DESCRIPTION_TEMPLATES = [
-    f"Describe the {{media}}. {PROTECTION_PROMPT}",
+DESCRIPTION_TEMPLATES = [
+    "Describe the {media}.",
+    "Describe the elements of this {media}.",
+    "Tell me about what happens in this {media}.",
+    "In this {media}, what happens?",
+    "What is in this {media}?",
+    "Tell me some important details about this {media}.",
+    "What happens here?",
+    "Describe what happens here",
 ]
 
 def pad_word_or_phrase(phrase: str) -> str:
@@ -198,17 +206,6 @@ def classical_remove_private_attributes_from_sentence(
 #####################################################
 # Non-HuggingFace Dataset Loaders
 #####################################################
-
-def load_visogender(
-    _dataset_name: str = "visogender",
-    urls: List[str] = [
-        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
-        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
-        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
-    ],
-):
-    files = load_online_files(urls)
-    return load_dataset("tsv", data_files=files)
 
 def load_hollywood2(
     dataset_name: str = "hollywood2",
@@ -263,13 +260,58 @@ def load_hollywood2(
     # Return the dataset loader
     return load_dataset("csv", data_files=[output_csv])
 
+def load_vatex_video_captioning(
+    dataset_name: str = "vatex",
+    urls: List[str] = [
+        "https://eric-xw.github.io/vatex-website/data/vatex_training_v1.0.json",
+    ],
+    download_dir: Optional[str] = None,
+):
+    # Ensure initial variables and directories are prepared
+    if download_dir is None:
+        download_dir = os.path.join("data_downloads", dataset_name)
+
+    os.makedirs(download_dir, exist_ok=True)
+
+    output_csv = os.path.join(download_dir, f"{dataset_name}.csv")
+    output_csv_exists = os.path.join(output_csv)
+
+    if not output_csv_exists:
+        raw_filepath = load_online_files(urls, downloads_dir=download_dir)[0]
+
+        with open(raw_filepath) as raw_file:
+            vatex_video_captioning_json = json.loads(raw_file.read())
+            raw_file.close()
+        
+        videos = []
+        questions = []
+        answers = []
+        
+        for json_obj in vatex_video_captioning_json:
+            youtube_id, start_time, end_time = tuple(json_obj["videoID"].split('_'))
+            filepath_downloaded = download_youtube_video(youtube_id, download_folder=os.path.join(download_dir, "videos"))
+            original_video_filename, video_fileext = os.path.splitext(filepath_downloaded)
+            video_fileext = video_fileext.removeprefix('.')
+            trimmed_video_filepath = f"{original_video_filename}_trimmed.{video_fileext}"
+            trim_video_cv2(filepath_downloaded, trimmed_video_filepath, start_time, end_time)
+            os.path.remove(filepath_downloaded)
+            possible_captions = json_obj["enCap"]
+            videos += [trimmed_video_filepath for _ in range(possible_captions)]
+            questions += [random.choice(DESCRIPTION_TEMPLATES) for _ in range(possible_captions)]
+            answers += possible_captions
+
+        pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv)
+    
+    return load_dataset("csv", data_files=[output_csv])
+
 def load_video_story(
-    _dataset_name: str = "video_story",
+    dataset_name: str = "video_story",
     urls: List[str] = [
         "https://isis-data.science.uva.nl/mediamill/videostory/vs_v1.tar.gx",
     ],
 ):
     files = load_online_files(urls)
+
     for file in files:
         output_dir = file.rstrip(".tar.gx")
         opened_tar = tarfile.open(file)
@@ -278,15 +320,19 @@ def load_video_story(
     
     raise NotImplementedError()
 
-def load_vatex_video_captioning(
-    _dataset_name: str = "vatex",
+def load_visogender(
+    dataset_name: str = "visogender",
     urls: List[str] = [
-        "https://eric-xw.github.io/vatex-website/data/vatex_training_v1.0.json",
+        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OO/OO_Visogender_02102023.tsv",
+        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_02102023.tsv",
+        "https://raw.githubusercontent.com/oxai/visogender/refs/heads/main/data/visogender_data/OP/OP_Visogender_11012024.tsv",
     ],
 ):
     files = load_online_files(urls)
+
+    # return load_dataset("tsv", data_files=files)
     raise NotImplementedError()
-    
+
 def load_youtube_pose(
     _dataset_name: str = "youtube-pose",
     kaggle_handle: str = "soumikrakshit/youtube-pose-dataset",
@@ -337,11 +383,11 @@ def generate_samples_for_vqa_pair(
     media_type: MediaType = MediaType.VIDEO,
     # Original text preservation args
     keep_original_vqa_pair: bool = True,
-    use_vlm_to_determine_whether_original_vqa_is_safe: bool = True,
+    chance_to_use_vlm_to_determine_whether_original_vqa_is_safe: float = 0.5,
     # Non-private exposing description args
     create_description_without_private_attributes: bool = True,
     use_current_answer_as_description_response_but_rephrase_without_private_attributes: bool = False,
-    description_templates: List[str] = list(NON_PRIVATE_DESCRIPTION_TEMPLATES),
+    description_templates: List[str] = list(DESCRIPTION_TEMPLATES),
     classically_clean_description: bool = True,
     # Refusal creation args
     create_refusals_for_private_attributes: bool = True,
@@ -369,10 +415,10 @@ def generate_samples_for_vqa_pair(
         question (str, optional): _description_
         answer (str, optional): _description_
         keep_original_vqa_pair (bool, optional): _description_. Defaults to True.
-        use_vlm_to_determine_whether_original_vqa_is_safe (bool, optional): _description_. Defaults to True.
+        chance_to_use_vlm_to_determine_whether_original_vqa_is_safe (float, optional): _description_. Defaults to 0.5.
         create_description_without_private_attributes (bool, optional): _description_. Defaults to True.
         use_current_answer_as_description_response_but_rephrase_without_private_attributes (bool, optional): _description_. Defaults to False.
-        description_templates (List[str], optional): _description_. Defaults to list(NON_PRIVATE_DESCRIPTION_TEMPLATES).
+        description_templates (List[str], optional): _description_. Defaults to list(DESCRIPTION_TEMPLATES).
         classically_clean_description (bool, optional): _description_. Defaults to True.
         create_refusals_for_private_attributes (bool, optional): _description_. Defaults to True.
         chance_to_create_refusal_per_attribute (float, optional): _description_. Defaults to 0.16667.
@@ -474,6 +520,7 @@ def generate_samples_for_vqa_pair(
     if create_description_without_private_attributes:
         # Choose a random description question based on the templates
         description_question = random.choice(description_templates).replace("{media}", media_category)
+        description_question_with_safety_prompt = description_question + " " + PROTECTION_PROMPT
 
         # If the answer given is the description we want to use
         if answer is not None and use_current_answer_as_description_response_but_rephrase_without_private_attributes:
@@ -481,7 +528,7 @@ def generate_samples_for_vqa_pair(
             description = vlm.rephrase(media, answer, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
         else:
             # Generate a new, safe answer
-            description = vlm(media, description_question).replace("{media}", media_category)
+            description = vlm(media, description_question_with_safety_prompt)
         
         # Ensure for a fact that the description is safe
         if classically_clean_description:
@@ -495,25 +542,40 @@ def generate_samples_for_vqa_pair(
 
         # If the original VQA pair is potentially unsafe,
         # the following should be `True`
-        if use_vlm_to_determine_whether_original_vqa_is_safe:
+        if chance_to_use_vlm_to_determine_whether_original_vqa_is_safe > random.random():
             
             # Make sure it is safe and does not include a question or
             # answer which contains exposure of private information
-            vqa_is_unsafe = vlm.yes_or_no(
+            question_is_unsafe = vlm.yes_or_no(
                 media,
-                "Do either of these statements contain a reference to any of the following attributes?\n\nAttributes:\n" + \
-                    yaml.dumps(private_attributes_to_protect) + f"\n\nStatement 1: '{question}'\nStatement 2: '{answer}'"
+                "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
+                    yaml.dumps(private_attributes_to_protect) + f"\n\nStatement: '{question}'"
             )
 
-            if not vqa_is_unsafe:
+            answer_is_unsafe = vlm.yes_or_no(
+                media,
+                "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
+                    yaml.dumps(private_attributes_to_protect) + f"\n\nStatement: '{answer}'"
+            )
+
+            if not question_is_unsafe and not answer_is_unsafe:
                 # If the original VQA is safe, append the Media-Text pair to the samples as a normal response
                 media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.NORMAL))
             else:
-                # If the original VQA is unsafe, append the Media-Text pair to the samples as a refusal
-                media_text_pairs.append(VQADataPoint(media, question, "Sorry, but I cannot answer any question regarding personal information.", AnswerType.REFUSAL))
+                # Regenerate the question or answer to be safe
+                if question_is_unsafe:
+                    question = vlm.rephrase(media, question, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
+                if answer_is_unsafe:
+                    answer = vlm.rephrase(media, answer, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
+
+                # If the original VQA is unsafe, append the rephrased Media-Text pair to the samples
+                media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.NORMAL))
         else:
-            # The original VQA pair is assumed to be safe, although we do not know if the original
-            # VQA pair is a standard answer or a refusal
+            # The classically cleaned original VQA pair is assumed to be safe,
+            # although we do not know if the original VQA pair is a standard answer or a refusal
+            question = classical_remove_private_attributes_from_sentence(question)
+            answer = classical_remove_private_attributes_from_sentence(answer)
+
             media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.UNKNOWN))
 
     # Return all the Media-Text pair samples
@@ -553,6 +615,21 @@ def process_dataset(
                 },
                 "generate_samples_kwargs": {
                     "must_contain_person": False,
+                },
+            },
+            {
+                "dataset": "vatex",
+                "media_key": "video",
+                "question_key": "question",
+                "answer_key": "answer",
+                "dataset_obtain_strategy": load_vatex_video_captioning,
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_refusals_for_private_attributes": False,
+                    "create_description_without_private_attributes": True,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
                 },
             },
             {
@@ -685,6 +762,7 @@ if __name__ == "__main__":
         type=str,
         help="Model to try out",
         choices=[
+            "GPT",
             "Qwen2-VL",
             "Qwen2.5-VL",
             "Phi-3.5-Multimodal",

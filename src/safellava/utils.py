@@ -150,6 +150,51 @@ def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube
             future_filename=[f"{video_id}.mp4"],
         )[0]
 
+def trim_video_cv2(input_file: str, output_file: str, start_time: float, end_time: float):
+    """
+    Trim a video using OpenCV by extracting frames between start_time and end_time.
+    
+    Note: Audio is not processed, so the resulting video will be silent.
+    
+    Parameters:
+        input_file (str): Path to the input video file.
+        output_file (str): Path to save the trimmed video.
+        start_time (float): Start time in seconds.
+        end_time (float): End time in seconds.
+    """
+    cap = cv2.VideoCapture(input_file)
+    if not cap.isOpened():
+        raise Exception("Error opening video file.")
+    
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps == 0:
+        raise Exception("Could not determine FPS of the video.")
+
+    # Calculate frame indices for the start and end times
+    start_frame = int(start_time * fps)
+    end_frame = int(end_time * fps)
+    
+    # Get video frame dimensions
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Define the codec and create a VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+    
+    current_frame = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or current_frame >= end_frame:
+            break
+        # Only write frames between start_frame and end_frame
+        if current_frame >= start_frame:
+            out.write(frame)
+        current_frame += 1
+
+    cap.release()
+    out.release()
+
 #####################################################
 # Images, Videos, and Other Media
 #####################################################
