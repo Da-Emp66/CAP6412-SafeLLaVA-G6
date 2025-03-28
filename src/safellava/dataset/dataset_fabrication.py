@@ -211,6 +211,7 @@ class VQADataCuratorConstruct:
     ):
         loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
         loaded_dataset = loaded_dataset.remove_columns(drop_columns)
+        
         return loaded_dataset
     
     def write_csv_of_loaded_existing_dataset(
