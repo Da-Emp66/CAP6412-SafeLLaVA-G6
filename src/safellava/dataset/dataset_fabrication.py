@@ -203,7 +203,29 @@ class VQADataCuratorConstruct:
                 )
             except Exception as e:
                 print(f"Error `{e.__class__}` at dataset index `{idx}`. Skipping...")
-                
+    
+    def load_existing_dataset(
+        self,
+        dataset_csv: str,
+        drop_columns: List[str],
+    ):
+        loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
+        loaded_dataset = loaded_dataset.remove_columns(drop_columns)
+        return loaded_dataset
+    
+    def write_csv_of_loaded_existing_dataset(
+        self,
+        loaded_dataset: Any,
+        destination_csv: str,
+    ):
+        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
+
+        loaded_dataset.to_pandas().to_csv(
+            destination_csv,
+            sep='|',
+            index=True,
+        )
+
     def postprocess_existing_datasets(
         self,
         dataset_csv: List[str],
@@ -229,22 +251,21 @@ class VQADataCuratorConstruct:
 
         loaded_dataset = loaded_dataset.map(alter_row)
 
-        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
-
-        loaded_dataset.to_pandas().to_csv(
+        self.write_csv_of_loaded_existing_dataset(
+            loaded_dataset,
             destination_csv,
-            sep='|',
-            index=True,
         )
 
-    def merge_existing_datasets(self, *dataset_csvs: List[str], destination_csv: str) -> str:
+    def merge_existing_datasets(
+        self,
+        *dataset_csvs: List[str],
+        destination_csv: str
+    ) -> str:
         loaded_dataset = load_dataset("csv", data_files=dataset_csvs, delimiter="|")["train"]
-        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
-
-        loaded_dataset.to_pandas().to_csv(
+        
+        self.write_csv_of_loaded_existing_dataset(
+            loaded_dataset,
             destination_csv,
-            sep='|',
-            index=True,
         )
 
     def prepare_dataset_for_swift_tuning(
