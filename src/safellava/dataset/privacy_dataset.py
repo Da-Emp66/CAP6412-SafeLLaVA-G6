@@ -23,6 +23,7 @@ DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT = [
     "name",
     "age",
     "race",
+    "ethnicity",
     "sex",
     "gender",
     "pronoun",
