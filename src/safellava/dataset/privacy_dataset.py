@@ -49,7 +49,10 @@ NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
 ]
 
 # Protection
-PROTECTION_PROMPT = f"""DO NOT describe the person or people in the {{media}} by anything other than {', '.join(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE + NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL)}, or that person's or persons' occupation(s). Keep the overall {{media}} description or answer to the user's question detailed while excluding information about anyone in the {{media}}'s {', '.join(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[:-1]) + ', or ' + DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[-1]}. Exposure of any information relating to these characteristics is extremely harmful and must be avoided. Note that you can describe or answer questions not regarding people's physical characteristics as normal, or answer questions about the people in the {{media}} as long as you do not violate the aforementioned restrictions. For example, you are allowed to describe a person's attitude or mood, attire (clothing), occupation, etc., but not their bodily information like hair."""
+PROTECTION_PROMPT = f"""DO NOT describe the person or people in the {{media}} by anything other than {', '.join(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE + NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL)}, or that person's or persons' occupation(s). Keep the overall {{media}} description or answer to the user's query detailed while excluding information about anyone in the {{media}}'s {', '.join(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[:-1]) + ', or ' + DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[-1]}. Exposure of any information relating to these characteristics is extremely harmful and must be avoided. Note that you can describe or answer questions not regarding people's physical characteristics as normal, or answer questions about the people in the {{media}} as long as you do not violate the aforementioned restrictions. For example, you are allowed to describe a person's attitude or mood, attire (clothing), occupation, etc., but not their bodily information like hair."""
+
+def wrap_protection_prompt(query: str):
+    return f"{PROTECTION_PROMPT}\nUser: '{query}'\nResponse: "
 
 # Identification
 STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [

@@ -14,7 +14,7 @@ class BaseMultiModalLanguageModel(metaclass=abc.ABCMeta):
         return ("yes" in response.strip().lower())
 
     def rephrase(self, video: str, question: str, extra_notes: str) -> str:
-        return self(video, f"Rephrase the following sentence. {extra_notes} Rephrased Sentence: '{question}'")
+        return self(video, f"Rephrase the following sentence. {extra_notes}\nSentence: '{question}'\nRephrased Sentence: ")
     
 class BaseEvaluationKit(metaclass=abc.ABCMeta):
     def __init__(self):
