@@ -3,6 +3,7 @@ import subprocess
 from typing import Optional
 import torch
 from transformers import (
+    Qwen2_5_VLForConditionalGeneration,
     Qwen2VLForConditionalGeneration,
     AutoModelForCausalLM,
     AutoProcessor,
@@ -24,41 +25,75 @@ from safellava.models.models_of_unknown_quality import Phi_3_5_Multimodal
 ##########################################################################################################
 
 class QwenVL_Instruct(BaseMultiModalLanguageModel):
-    def __init__(self, model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct", use_flash_attention_2: bool = False):
-        self.model_id = model_id # Can be "Qwen/Qwen2-VL-2B-Instruct", etc.
+    def __init__(self, model_id: str = "Qwen/Qwen2-VL-2B-Instruct", use_flash_attention_2: bool = False):
+        self.model_id = model_id
 
         model_instantiation_kwargs = {}
         if use_flash_attention_2:
             model_instantiation_kwargs.update({"attn_implementation": "flash_attention_2"})
 
-        self.model = Qwen2VLForConditionalGeneration.from_pretrained(
-            self.model_id,
-            torch_dtype="auto",
-            device_map="auto",
-            **model_instantiation_kwargs
-        )
+        if "Qwen2.5-VL" in self.model_id:
+            self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                self.model_id,
+                torch_dtype="auto",
+                device_map="auto",
+                **model_instantiation_kwargs
+            )
+            min_pixels = 256*28*28
+            max_pixels = 1024*28*28
+            self.processor = AutoProcessor.from_pretrained(
+                self.model_id,
+                min_pixels=min_pixels,
+                max_pixels=max_pixels,
+            )
+        elif "Qwen2-VL" in self.model_id:
+            self.model = Qwen2VLForConditionalGeneration.from_pretrained(
+                self.model_id,
+                torch_dtype="auto",
+                device_map="auto",
+                **model_instantiation_kwargs
+            )
 
-        self.processor = AutoProcessor.from_pretrained(
-            self.model_id,
-        )
+            self.processor = AutoProcessor.from_pretrained(
+                self.model_id,
+            )
+        else:
+            raise NotImplementedError()
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
-        frame_rate = 1.0
+        # To use our video frame sampler
+        # frame_rate = 1.0
         
-        _media_type, frames, _num_frames = load_media(
-            video,
-            video_sample_rate=frame_rate,
-        )
+        # _media_type, frames, _num_frames = load_media(
+        #     video,
+        #     video_sample_rate=frame_rate,
+        # )
 
-        # Messages containing a images list as a video and a text query
+        # # Messages containing a images list as a video and a text query
+        # messages = [
+        #     {
+        #         "role": "user",
+        #         "content": [
+        #             {
+        #                 "type": "video",
+        #                 "video": frames,
+        #                 "fps": frame_rate,
+        #             },
+        #             {"type": "text", "text": text},
+        #         ],
+        #     }
+        # ]
+
+        # To use Decord:
         messages = [
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "video",
-                        "video": frames,
-                        "fps": frame_rate,
+                        "video": video,
+                        "max_pixels": 360 * 420,
+                        "fps": 1.0,
                     },
                     {"type": "text", "text": text},
                 ],
@@ -77,7 +112,6 @@ class QwenVL_Instruct(BaseMultiModalLanguageModel):
                 text=[text],
                 images=image_inputs,
                 videos=video_inputs,
-                fps=frame_rate,
                 padding=True,
                 return_tensors="pt",
                 **video_kwargs,
@@ -242,7 +276,7 @@ class LlavaInterleave(BaseMultiModalLanguageModel):
 MODEL_MAP = {
     "GPT": (GPT, {}),
     "Qwen2-VL": (QwenVL_Instruct, { "model_id": "Qwen/Qwen2-VL-2B-Instruct" }),
-    "Qwen2.5-VL": (QwenVL_Instruct, {}),
+    "Qwen2.5-VL": (QwenVL_Instruct, { "model_id": "Qwen/Qwen2.5-VL-3B-Instruct" }),
     "Phi-3.5-Multimodal": (Phi_3_5_Multimodal, {}),
     "Ovis2-1B": (Ovis2, {}),
     "Ovis2-2B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-2B" }),

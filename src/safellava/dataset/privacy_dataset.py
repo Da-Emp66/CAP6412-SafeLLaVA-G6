@@ -164,6 +164,7 @@ DESCRIPTION_TEMPLATES = [
     "Tell me some important details about this {media}.",
     "What happens here?",
     "Describe what happens here",
+    "Explain what happens in this {media}."
 ]
 
 def pad_word_or_phrase(phrase: str) -> str:
@@ -230,7 +231,7 @@ def load_hollywood2(
     output_csv = os.path.join(download_dir, f"{dataset_name}.csv")
     videos = []
 
-    output_csv_exists = os.path.join(output_csv)
+    output_csv_exists = os.path.exists(output_csv)
 
     # Download and extract the files
     files = load_online_files(urls, downloads_dir=download_dir)
@@ -271,6 +272,7 @@ def load_vatex_video_captioning(
         "https://eric-xw.github.io/vatex-website/data/vatex_training_v1.0.json",
     ],
     download_dir: Optional[str] = None,
+    captions_per_video: int = 10,
 ):
     # Ensure initial variables and directories are prepared
     if download_dir is None:
@@ -280,7 +282,7 @@ def load_vatex_video_captioning(
 
     # Get the name of the output CSV and if it exists
     output_csv = os.path.join(download_dir, f"{dataset_name}.csv")
-    output_csv_exists = os.path.join(output_csv)
+    output_csv_exists = os.path.exists(output_csv)
 
     if not output_csv_exists:
         # Download the dataset JSON
@@ -299,7 +301,9 @@ def load_vatex_video_captioning(
         # Loop through all potential datapoints
         for idx, json_obj in enumerate(vatex_video_captioning_json):
             # Grab the YouTube ID and the start and end time in seconds
-            youtube_id, start_time, end_time = tuple(json_obj["videoID"].split('_'))
+            values = json_obj["videoID"].split('_')
+            start_time, end_time = tuple(map(lambda x: int(x), values[-2:]))
+            youtube_id = "_".join(values[:-2])
             
             try:
                 # Download and trim the video to the expected window and length
@@ -308,22 +312,22 @@ def load_vatex_video_captioning(
                 video_fileext = video_fileext.removeprefix('.')
                 trimmed_video_filepath = f"{original_video_filename}_trimmed.{video_fileext}"
                 trim_video_cv2(filepath_downloaded, trimmed_video_filepath, start_time, end_time)
-                os.path.remove(filepath_downloaded)
+                os.remove(filepath_downloaded)
             except Exception as e:
                 print(f"Skipping sample at `idx={idx}` with `videoID={json_obj['videoID']}`: `{e}`")
                 continue
 
             # Add the rows
-            possible_captions = json_obj["enCap"]
-            videos += [trimmed_video_filepath for _ in range(possible_captions)]
-            questions += [random.choice(DESCRIPTION_TEMPLATES) for _ in range(possible_captions)]
+            possible_captions = json_obj["enCap"][:captions_per_video]
+            videos += [trimmed_video_filepath for _ in possible_captions]
+            questions += [random.choice(DESCRIPTION_TEMPLATES) for _ in possible_captions]
             answers += possible_captions
 
-    # Write to the CSV file
-    pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv)
+        # Write to the CSV file
+        pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv, sep='|')
     
     # Return the dataset loader
-    return load_dataset("csv", data_files=[output_csv])
+    return load_dataset("csv", data_files=[output_csv], delimiter='|')
 
 def load_video_story(
     dataset_name: str = "video_story",
@@ -541,7 +545,7 @@ def generate_samples_for_vqa_pair(
     if create_description_without_private_attributes:
         # Choose a random description question based on the templates
         description_question = random.choice(description_templates).replace("{media}", media_category)
-        description_question_with_safety_prompt = description_question + " " + PROTECTION_PROMPT
+        description_question_with_safety_prompt = description_question + " " + PROTECTION_PROMPT.replace("{media}", media_category)
 
         # If the answer given is the description we want to use
         if answer is not None and use_current_answer_as_description_response_but_rephrase_without_private_attributes:
@@ -570,32 +574,39 @@ def generate_samples_for_vqa_pair(
             question_is_unsafe = vlm.yes_or_no(
                 media,
                 "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
-                    yaml.dumps(private_attributes_to_protect) + f"\n\nStatement: '{question}'"
+                    yaml.safe_dump(private_attributes_to_protect) + f"\n\nStatement: '{question}'"
             )
 
             answer_is_unsafe = vlm.yes_or_no(
                 media,
                 "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
-                    yaml.dumps(private_attributes_to_protect) + f"\n\nStatement: '{answer}'"
+                    yaml.safe_dump(private_attributes_to_protect) + f"\n\nStatement: '{answer}'"
             )
 
             if not question_is_unsafe and not answer_is_unsafe:
                 # If the original VQA is safe, append the Media-Text pair to the samples as a normal response
-                media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.NORMAL))
+                media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), answer, AnswerType.NORMAL))
             else:
                 # Regenerate the question or answer to be safe
                 if question_is_unsafe:
-                    question = vlm.rephrase(media, question, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
+                    # print(f"Rephrasing question: {question}")
+                    question = vlm.rephrase(media, question.replace("{media}", media_category), extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
+                    # print(f"Rephrased question: {question}")
                 if answer_is_unsafe:
-                    answer = vlm.rephrase(media, answer, extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
+                    # print(f"Rephrasing answer: {answer}")
+                    answer = vlm.rephrase(media, answer.replace("{media}", media_category), extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
+                    # print(f"Rephrased answer: {answer}")
+                        
+                question = classical_remove_private_attributes_from_sentence(question.replace("{media}", media_category))
+                answer = classical_remove_private_attributes_from_sentence(answer.replace("{media}", media_category))
 
                 # If the original VQA is unsafe, append the rephrased Media-Text pair to the samples
-                media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.NORMAL))
+                media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), answer.replace("{media}", media_category), AnswerType.NORMAL))
         else:
             # The classically cleaned original VQA pair is assumed to be safe,
             # although we do not know if the original VQA pair is a standard answer or a refusal
-            question = classical_remove_private_attributes_from_sentence(question)
-            answer = classical_remove_private_attributes_from_sentence(answer)
+            question = classical_remove_private_attributes_from_sentence(question.replace("{media}", media_category))
+            answer = classical_remove_private_attributes_from_sentence(answer.replace("{media}", media_category))
 
             media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.UNKNOWN))
 
@@ -616,13 +627,20 @@ def process_dataset(
 
     if process == "curate":
 
+        vlm = instantiate_model_based_on_model_map(model)
+
+        print(f"Using {model} to curate dataset...")
+
+        curator = VQADataCuratorConstruct(vlm)
+
         curatable_datasets = [
             
             #####################################################
             # Videos
             #####################################################
 
-            {
+            {   # Curate Hollywood2 Dataset. This was originally done with Qwen2-VL
+                # and could be redone with Qwen2.5-VL for potentially improved descriptions.
                 "dataset": "hollywood2",
                 "media_key": "video",
                 "dataset_obtain_strategy": load_hollywood2,
@@ -638,12 +656,16 @@ def process_dataset(
                     "must_contain_person": False,
                 },
             },
-            {
+            {   # Curate Vatex with Qwen2-VL, mostly by rephrasing
+                # existing descriptions.
                 "dataset": "vatex",
                 "media_key": "video",
                 "question_key": "question",
                 "answer_key": "answer",
                 "dataset_obtain_strategy": load_vatex_video_captioning,
+                "dataset_obtain_kwargs": {
+                    "captions_per_video": 5,
+                },
                 "generate_samples_kwargs": {
                     "must_contain_person": False,
                     "create_refusals_for_private_attributes": False,
@@ -653,14 +675,33 @@ def process_dataset(
                     "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
                 },
             },
-            {
+            {   # Go through the cleaned ActivityNet dataset,
+                # replace Flan-T5 (google/flan-t5-large) descriptions
+                # with Qwen2-VL descriptions.
+                "dataset": "cleaned_original_activitynet",
+                "media_key": "video",
+                "dataset_obtain_strategy": curator.load_existing_dataset,
+                "dataset_obtain_kwargs": {
+                    "dataset_csv": "./privacy_preservation/activitynet_curated/datapoints.csv",
+                    "drop_columns": ["question", "answer"],
+                },
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_refusals_for_private_attributes": True,
+                    "create_description_without_private_attributes": True,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
+                },
+            },
+            {  # Unused, but available
                 "dataset": "lmms-lab/ActivityNetQA",
                 "media_key": lambda row: row["video_name"],
                 "question_key": "question",
                 "answer_key": "answer",
                 "approximate_max_sample_count_to_obtain": 200,
             },
-            {
+            {  # Unused, but available
                 "dataset": "lmms-lab/VideoDetailCaption",
                 "media_key": lambda row: row["video_name"],
                 "question_key": "question",
@@ -672,7 +713,7 @@ def process_dataset(
             # Images
             #####################################################
 
-            {
+            {  # Unused, but available
                 "dataset": "dai22dai/video",
                 "media_key": lambda row: row["image"],
                 "approximate_max_sample_count_to_obtain": 200,
@@ -682,7 +723,7 @@ def process_dataset(
                     "keep_original_vqa_pair": False,
                 },
             },
-            {
+            {  # Unused, but available
                 "dataset": "visogender",
                 "dataset_obtain_strategy": load_visogender,
                 "dataset_obtain_kwargs": {
@@ -700,12 +741,6 @@ def process_dataset(
                 }
             },
         ]
-
-        vlm = instantiate_model_based_on_model_map(model)
-
-        print(f"Using {model} to curate dataset...")
-
-        curator = VQADataCuratorConstruct(vlm)
 
         for dataset_kwargs in curatable_datasets:
             if dataset_kwargs["dataset"] not in dataset_names:
@@ -794,7 +829,7 @@ if __name__ == "__main__":
             "Llava-OneVision-Qwen2-0.5B",
             "Llava-Interleave-Qwen2-0.5B",
         ],
-        default="Qwen2.5-VL",
+        default="Qwen2-VL",
         required=False,
     )
     args = parser.parse_args()

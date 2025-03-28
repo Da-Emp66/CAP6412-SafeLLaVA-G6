@@ -182,13 +182,9 @@ class VQADataCuratorConstruct:
                     os.makedirs(unknown_media_directory, exist_ok=True)
                     media = str(shutil.copy(media, unknown_media_directory))
 
-                # Fix the media path in the newly generated samples
-                for idx, sample in enumerate(samples):
-                    sample.media_path = media
-                    samples[idx] = sample
-
                 # Convert the new samples into a format readable by pandas (listify the named tuples)
-                samples = [(list(sample[:-1]) + [sample[-1].value] + [idx]) for sample in samples]
+                # Also, fix the media path in the newly generated samples
+                samples = [([media] + list(sample[1:-1]) + [sample[-1].value] + [idx]) for sample in samples]
 
                 # Add to the number of samples we have obtained
                 num_samples_obtained += len(samples)
@@ -207,10 +203,11 @@ class VQADataCuratorConstruct:
     def load_existing_dataset(
         self,
         dataset_csv: str,
-        drop_columns: List[str],
+        drop_columns: Optional[List[str]] = None,
     ):
         loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter="|")["train"]
-        loaded_dataset = loaded_dataset.remove_columns(drop_columns)
+        if drop_columns is not None:
+            loaded_dataset = loaded_dataset.remove_columns(drop_columns)
 
         return loaded_dataset
     

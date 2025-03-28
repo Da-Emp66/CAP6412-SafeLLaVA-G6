@@ -3,6 +3,7 @@ from enum import Enum
 from io import BytesIO, StringIO
 import os
 from pathlib import Path
+import re
 from tempfile import NamedTemporaryFile, TemporaryFile
 from typing import Any, Dict, List, Optional, Tuple, TypeAlias, Union
 from urllib.parse import urlparse
@@ -61,7 +62,7 @@ def convert_string_to_file(content: str, target: FileType, **kwargs: Dict[str, A
         with open(filename, mode) as file:
             file.write(content)
             file.close()
-        return file
+        return filename
 
 def load_online_files(
         urls: List[str],
@@ -122,6 +123,18 @@ def load_online_files(
 
     return files
 
+FIRST_FILTER = re.compile(r"\(.*\)|\[.*\]")
+SECOND_FILTER = re.compile(r"\~|\'|\!|\@|\#|\%|\^|\*|\&|\-|\(.*\)|\[.*\]|\°|\(|\)|\[|\]|\+|\<|\>|\?|\{|\}|\=|\"|\:|\;|\,|\|")
+THIRD_FILTER = re.compile(r"\ +")
+
+def remove_special_characters_from_filename(filename: str) -> str:
+    _filepath_wo_ext, ext = os.path.splitext(filename)
+    ext = ext.removeprefix('.')
+    filename = re.sub(FIRST_FILTER, r"", filename)
+    filename = re.sub(SECOND_FILTER, r"", filename)
+    filename = re.sub(THIRD_FILTER, r" ", filename)
+    return filename.replace(f" .{ext}", f".{ext}")
+
 def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube: bool = True) -> str:
     """Download a Youtube video based on its video ID
 
@@ -137,7 +150,7 @@ def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube
         if stream is None:
             yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
             stream = yt.streams.first()
-        filename = f"{stream.default_filename.split('.')[0]}.mp4"
+        filename = remove_special_characters_from_filename(f"{stream.default_filename.split('.')[0]}.mp4")
         os.makedirs(download_folder, exist_ok=True)
         return stream.download(
             output_path=download_folder,

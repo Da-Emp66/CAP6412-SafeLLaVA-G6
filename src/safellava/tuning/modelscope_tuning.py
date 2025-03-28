@@ -4,9 +4,7 @@ import threading
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from safellava.dataset.privacy_dataset import PROTECTION_PROMPT
 from safellava.interfaces import BaseMultiModalLanguageModel
-from safellava.utils import load_media
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
@@ -232,6 +230,7 @@ class ModelScopeSwiftTuning:
 
 
 def main():
+    from safellava.dataset.privacy_dataset import PROTECTION_PROMPT
     tuned_model = TunedMultiModalLanguageModel(
         "AIDC-AI/Private-Ovis2-1B",
         "checkpoint-1474-20250323T185905Z-001/checkpoint-1474",
@@ -249,7 +248,7 @@ def main():
 
     print(tuned_model(
         video="privacy_preservation/hollywood2_curated/videos/actioncliptest00001.avi",
-        text=f"Describe this video. {PROTECTION_PROMPT.replace("{media}", "video")}",
+        text=f"Describe this video. {PROTECTION_PROMPT.replace('{media}', 'video')}",
     ))
 
 if __name__ == "__main__":
