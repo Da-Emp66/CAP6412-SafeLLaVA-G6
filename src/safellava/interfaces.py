@@ -16,3 +16,10 @@ class BaseMultiModalLanguageModel(metaclass=abc.ABCMeta):
     def rephrase(self, video: str, question: str, extra_notes: str) -> str:
         return self(video, f"Rephrase the following sentence. {extra_notes} Rephrased Sentence: '{question}'")
     
+class BaseEvaluationKit(metaclass=abc.ABCMeta):
+    def __init__(self):
+        pass
+
+    def __call__(self, vlm: BaseMultiModalLanguageModel) -> str:
+        raise NotImplementedError()
+    
