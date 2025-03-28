@@ -773,7 +773,7 @@ if __name__ == "__main__":
             "Llava-OneVision-Qwen2-0.5B",
             "Llava-Interleave-Qwen2-0.5B",
         ],
-        default="Ovis2-1B",
+        default="Qwen2.5-VL",
         required=False,
     )
     args = parser.parse_args()
