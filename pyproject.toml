@@ -47,6 +47,10 @@ dependencies = [
     "openai>=1.67.0",
     "decord>=0.6.0",
     "yt-dlp>=2025.3.27",
+    "midv500>=0.2.1",
+    "pillow-avif-plugin>=1.5.1",
+    "faker>=37.1.0",
+    "rstr>=3.2.2",
 ]
 
 [tool.uv]

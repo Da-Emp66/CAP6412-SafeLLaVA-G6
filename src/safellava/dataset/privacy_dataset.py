@@ -5,6 +5,7 @@ import random
 import re
 from typing import Callable, List, Literal, Optional, Set
 from datasets import load_dataset
+from huggingface_hub import hf_hub_download
 import kagglehub
 import tarfile
 import pandas as pd
@@ -43,20 +44,7 @@ NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE = [
     "individual",
 ]
 
-NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
-    "people",
-    "individuals",
-]
-
-# Protection
-PROTECTION_PROMPT = f"""DO NOT describe the person or people in the {{media}} by anything other than {', '.join(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE + NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL)}, or that person's or persons' occupation(s). Keep the overall {{media}} description or answer to the user's query detailed while excluding information about anyone in the {{media}}'s {', '.join(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[:-1]) + ', or ' + DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[-1]}. Exposure of any information relating to these characteristics is extremely harmful and must be avoided. Note that you can describe or answer questions not regarding people's physical characteristics as normal, or answer questions about the people in the {{media}} as long as you do not violate the aforementioned restrictions. For example, you are allowed to describe a person's attitude or mood, attire (clothing), occupation, etc., but not their bodily information like hair."""
-
-def wrap_protection_prompt(query: str):
-    return f"{PROTECTION_PROMPT}\nUser: '{query}'\nResponse: "
-
-# Identification
-STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
-    "person",
+PRIVACY_SENSITIVE_KEYWORDS_PERTAINING_TO_PEOPLE = [
     "man",
     "male",
     "guy",
@@ -70,8 +58,12 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = [
     "baby",
 ]
 
-STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL = [
+NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
     "people",
+    "individuals",
+]
+
+PRIVACY_SENSITIVE_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL = [
     "men",
     "males",
     "guys",
@@ -84,6 +76,17 @@ STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL = [
     "children",
     "babies",
 ]
+
+# Protection
+PROTECTION_PROMPT = f"""DO NOT describe the person or people in the {{media}} by anything other than {', '.join(NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE + NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL)}, or that person's or persons' occupation(s). Keep the overall {{media}} description or answer to the user's query detailed while excluding information about anyone in the {{media}}'s {', '.join(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[:-1]) + ', or ' + DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[-1]}. Exposure of any information relating to these characteristics is extremely harmful and must be avoided. Note that you can describe or answer questions not regarding people's physical characteristics as normal, or answer questions about the people in the {{media}} as long as you do not violate the aforementioned restrictions. For example, you are allowed to describe a person's attitude or mood, attire (clothing), occupation, etc., but not their bodily information like hair."""
+
+def wrap_protection_prompt(query: str):
+    return f"{PROTECTION_PROMPT}\nUser: '{query}'\nResponse: "
+
+# Identification
+STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE = NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE + PRIVACY_SENSITIVE_KEYWORDS_PERTAINING_TO_PEOPLE
+
+STANDARD_KEYWORDS_FOR_PROMPTS_PERTAINING_TO_PEOPLE_PLURAL = NEUTRAL_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL + PRIVACY_SENSITIVE_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL
 
 # Pronouns
 PROTECTED_PRONOUNS = {
@@ -144,15 +147,17 @@ REFUSAL_QUESTION_TEMPLATES = [
     # Plural
     "Describe the {attribute}s of the people.",
     "Describe the {attribute}s of the people shown in the {media}.",
-    "What is the {attribute}s of the people?",
-    "What is the {attribute}s of the people shown in the {media}?",
+    "What are the {attribute}s of the people?",
+    "What are the {attribute}s of the people shown in the {media}?",
 ]
+
+BASE_REFUSAL = f"Sorry, but as a privacy-preserving multimodal large language model, I must prioritize the safety and privacy of the individual(s) in the {{media}}, and I cannot expose any information about their {', '.join(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[:-1]) + ', or ' + DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT[-1]}."
 
 REFUSAL_ANSWER_TEMPLATES = [
     "I will not answer any question asking for descriptions on personal information such as {attribute}.",
     "I refuse to expose details which may identify any person's {attribute}.",
     "Sorry, but I cannot answer regarding any person's {attribute}.",
-]
+] + [BASE_REFUSAL]
 
 # Descriptions
 DESCRIPTION_TEMPLATES = [
@@ -206,6 +211,15 @@ def classical_remove_private_attributes_from_sentence(
     # Patch the cases that get replaced twice
     for val in pronoun_replacement_options["possessive"]:
         processed_sentence = processed_sentence.replace(f"him or {val}", val)
+
+    # Patch the replacements that are not fully grammatically correct
+    processed_sentence = processed_sentence.replace(
+        "A individual ",
+        "An individual "
+    ).replace(
+        " a individual ",
+        " an individual "
+    )
 
     return processed_sentence
 
@@ -320,14 +334,65 @@ def load_vatex_video_captioning(
             # Add the rows
             possible_captions = json_obj["enCap"][:captions_per_video]
             videos += [trimmed_video_filepath for _ in possible_captions]
-            questions += [random.choice(DESCRIPTION_TEMPLATES) for _ in possible_captions]
+            questions += [random.choice(DESCRIPTION_TEMPLATES).replace("{media}", "video") for _ in possible_captions]
             answers += possible_captions
 
-        # Write to the CSV file
-        pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv, sep='|')
+            # Write to the CSV file
+            pd.DataFrame({"video": videos, "question": questions, "answer": answers}).to_csv(output_csv, sep='|')
     
     # Return the dataset loader
     return load_dataset("csv", data_files=[output_csv], delimiter='|')
+
+def load_lsd_bench(
+    dataset_name: str = "TainU/LSDBench",
+    download_dir: Optional[str] = None,
+):
+    if download_dir is None:
+        download_dir = os.path.join("data_downloads", dataset_name.replace("/", "_"))
+
+    os.makedirs(download_dir, exist_ok=True)
+
+    def convert_hh_mm_ss_to_seconds(hh_mm_ss: str) -> float:
+        h, m, s = tuple(list(map(lambda x: float(x), hh_mm_ss.split(":"))))
+        return float(h * 3600.0 + m * 60.0 + s)
+
+    def alter_row(row):
+        options = row["options"]
+        row["question"] = row["question"] + "\n" + "\n".join([f"{key}. {options[key]}" for key in options]) + "\nRespond with only the letter corresponding to the correct answer. Response: "
+
+        try:
+            expected_filename = os.path.join(download_dir, f"downsampled_videos/{row['video_id']}_trimmed.mp4")
+            desired_filename = os.path.join(download_dir, os.path.basename(expected_filename))
+            row["video_id"] = desired_filename
+            if not os.path.exists(desired_filename):
+                if not os.path.exists(expected_filename):
+                    filepath = hf_hub_download(repo_id="TainU/LSDBench", filename=f"downsampled_videos/{row['video_id']}.mp4", repo_type="dataset", local_dir=download_dir)
+                    start_time_secs = convert_hh_mm_ss_to_seconds(row["time_range"]["start"])
+                    end_time_secs = convert_hh_mm_ss_to_seconds(row["time_range"]["end"])
+                    file, ext = os.path.splitext(filepath)
+                    output_filepath = file + "_trimmed" + "." + ext.removeprefix(".")
+                    trim_video_cv2(filepath, output_filepath, start_time=start_time_secs, end_time=end_time_secs)
+                os.rename(expected_filename, desired_filename)
+                os.remove(filepath)
+        except Exception as e:
+            print(f"Could not download {row['video_id']} due to {e}")
+
+        return row
+    
+    dataset = load_dataset(dataset_name, split="test")
+    dataset = dataset.map(alter_row)
+
+    return dataset
+
+def load_midv500(dataset_name: str = ""):
+    import midv500
+    # set directory for dataset to be downloaded
+    dataset_dir = 'midv500_data/'
+
+    # download and unzip the base midv500 dataset
+    dataset_name = "midv500"
+    midv500.download_dataset(dataset_dir, dataset_name)
+
 
 def load_video_story(
     dataset_name: str = "video_story",
@@ -409,6 +474,8 @@ def generate_samples_for_vqa_pair(
     # Original text preservation args
     keep_original_vqa_pair: bool = True,
     chance_to_use_vlm_to_determine_whether_original_vqa_is_safe: float = 0.5,
+    chance_to_use_keywords_to_determine_if_original_vqa_is_unsafe: float = 1.0,
+    chance_to_create_refusal_if_original_vqa_is_unsafe: float = 1.0,
     # Non-private exposing description args
     create_description_without_private_attributes: bool = True,
     use_current_answer_as_description_response_but_rephrase_without_private_attributes: bool = False,
@@ -441,6 +508,8 @@ def generate_samples_for_vqa_pair(
         answer (str, optional): _description_
         keep_original_vqa_pair (bool, optional): _description_. Defaults to True.
         chance_to_use_vlm_to_determine_whether_original_vqa_is_safe (float, optional): _description_. Defaults to 0.5.
+        chance_to_use_keywords_to_determine_if_original_vqa_is_unsafe (float, optional): _description_. Defaults to 1.0.
+        chance_to_create_refusal_if_original_vqa_is_unsafe (float, optional): _description_. Defaults to 1.0.
         create_description_without_private_attributes (bool, optional): _description_. Defaults to True.
         use_current_answer_as_description_response_but_rephrase_without_private_attributes (bool, optional): _description_. Defaults to False.
         description_templates (List[str], optional): _description_. Defaults to list(DESCRIPTION_TEMPLATES).
@@ -564,6 +633,20 @@ def generate_samples_for_vqa_pair(
 
     # If keeping the original VQA pair is allowed
     if question is not None and answer is not None and keep_original_vqa_pair:
+        question_is_unsafe = False
+        answer_is_unsafe = False
+
+        # If the original question contains a sensitive keyword
+        if chance_to_use_keywords_to_determine_if_original_vqa_is_unsafe > random.random():
+            privacy_sensitive_words = set(
+                PRIVACY_SENSITIVE_KEYWORDS_PERTAINING_TO_PEOPLE + 
+                PRIVACY_SENSITIVE_KEYWORDS_PERTAINING_TO_PEOPLE_PLURAL
+            )
+
+            if any([privacy_sensitive_word in question for privacy_sensitive_word in privacy_sensitive_words]):
+                question_is_unsafe = True
+            if any([privacy_sensitive_word in answer for privacy_sensitive_word in privacy_sensitive_words]):
+                answer_is_unsafe = True
 
         # If the original VQA pair is potentially unsafe,
         # the following should be `True`
@@ -571,34 +654,48 @@ def generate_samples_for_vqa_pair(
             
             # Make sure it is safe and does not include a question or
             # answer which contains exposure of private information
-            question_is_unsafe = vlm.yes_or_no(
-                media,
-                "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
-                    yaml.safe_dump(private_attributes_to_protect) + f"\n\nStatement: '{question}'"
-            )
+            if not question_is_unsafe:
+                question_is_unsafe = vlm.yes_or_no(
+                    media,
+                    "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
+                        yaml.safe_dump(private_attributes_to_protect) + f"\n\nStatement: '{question}'"
+                )
 
-            answer_is_unsafe = vlm.yes_or_no(
-                media,
-                "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
-                    yaml.safe_dump(private_attributes_to_protect) + f"\n\nStatement: '{answer}'"
-            )
+            if not answer_is_unsafe:
+                answer_is_unsafe = vlm.yes_or_no(
+                    media,
+                    "Does this statement contain any of or a reference to any of the following attributes?\n\nAttributes:\n" + \
+                        yaml.safe_dump(private_attributes_to_protect) + f"\n\nStatement: '{answer}'"
+                )
 
             if not question_is_unsafe and not answer_is_unsafe:
+                # Ensure for a fact that the description is safe
+                if classically_clean_description:
+                    question = classical_remove_private_attributes_from_sentence(question.replace("{media}", media_category))
+                    answer = classical_remove_private_attributes_from_sentence(answer.replace("{media}", media_category))
+
                 # If the original VQA is safe, append the Media-Text pair to the samples as a normal response
                 media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), answer, AnswerType.NORMAL))
             else:
+                refusal_for_question = False
                 # Regenerate the question or answer to be safe
                 if question_is_unsafe:
-                    # print(f"Rephrasing question: {question}")
+
+                    if chance_to_create_refusal_if_original_vqa_is_unsafe > random.random():
+                        refusal_for_question = True
+                        media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), BASE_REFUSAL.replace("{media}", media_category), AnswerType.REFUSAL))
+
                     question = vlm.rephrase(media, question.replace("{media}", media_category), extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
-                    # print(f"Rephrased question: {question}")
                 if answer_is_unsafe:
-                    # print(f"Rephrasing answer: {answer}")
+                    if not refusal_for_question and chance_to_create_refusal_if_original_vqa_is_unsafe > random.random():
+                        media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), BASE_REFUSAL.replace("{media}", media_category), AnswerType.REFUSAL))
+
                     answer = vlm.rephrase(media, answer.replace("{media}", media_category), extra_notes=PROTECTION_PROMPT.replace("{media}", media_category))
-                    # print(f"Rephrased answer: {answer}")
-                        
-                question = classical_remove_private_attributes_from_sentence(question.replace("{media}", media_category))
-                answer = classical_remove_private_attributes_from_sentence(answer.replace("{media}", media_category))
+                
+                # Ensure for a fact that the description is safe
+                if classically_clean_description:
+                    question = classical_remove_private_attributes_from_sentence(question.replace("{media}", media_category))
+                    answer = classical_remove_private_attributes_from_sentence(answer.replace("{media}", media_category))
 
                 # If the original VQA is unsafe, append the rephrased Media-Text pair to the samples
                 media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), answer.replace("{media}", media_category), AnswerType.NORMAL))
@@ -694,6 +791,50 @@ def process_dataset(
                     "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
                 },
             },
+            {
+                "dataset": "malterei/LLaVA-Video-small-swift",
+                "media_key": "videos",
+                "question_key": "query",
+                "answer_key": "response",
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_description_without_private_attributes": False,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
+                }
+            },
+            {
+                "dataset": "midv500",
+                "dataset_obtain_strategy": "" # load_midv500,
+            },
+            {
+                "dataset": "TainU/LSDBench",
+                "dataset_obtain_strategy": load_lsd_bench,
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_description_without_private_attributes": False,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
+                }
+            },
+
+            {  # Not supported due to videos being too long
+                "dataset": "CG-Bench/CG-Bench",
+                "dataset_obtain_strategy": ..., # load_cgbench,
+                "media_key": "video",
+                "question_key": lambda row: row["question"] + "\nChoices:\n" + "\n".join([f"{chr(65 + idx)}. {choice}" for idx, choice in enumerate(row["choices"])]) + "\nResponse: ",
+                "answer_key": lambda row: row["right_answer"] + ". " + row["answer"],
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_description_without_private_attributes": False,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
+                }
+            },
+
             {  # Unused, but available
                 "dataset": "lmms-lab/ActivityNetQA",
                 "media_key": lambda row: row["video_name"],

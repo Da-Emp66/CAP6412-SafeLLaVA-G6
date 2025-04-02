@@ -90,7 +90,7 @@ class VQADataCuratorConstruct:
         loaded_dataset = dataset_obtain_strategy(
             dataset,
             **dataset_obtain_kwargs,
-        )["train"]
+        )["train"].remove_columns("Unnamed: 0")
 
         # Prepare variables
         num_samples_obtained = 0
@@ -110,7 +110,7 @@ class VQADataCuratorConstruct:
                 # destination CSV file. So, we are assuming that the row of the sample we left
                 # off on in the current CSV file is the row we should start at in the current
                 # dataset.
-                previous_df = pd.read_csv(destination_csv, sep='|')
+                previous_df = pd.read_csv(destination_csv, sep='|', index_col=0)
                 num_rows_already_processed = int(previous_df.iloc[-1]["original_dataset_index"]) + 1
                 num_samples_obtained = len(previous_df.index)
                 current_df = previous_df

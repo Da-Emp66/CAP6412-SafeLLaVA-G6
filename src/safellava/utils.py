@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import urllib.request
 import uuid
 import warnings
+import pillow_avif
 from PIL import Image
 import cv2
 import numpy as np
@@ -212,7 +213,7 @@ def trim_video_cv2(input_file: str, output_file: str, start_time: float, end_tim
 # Images, Videos, and Other Media
 #####################################################
 
-IMAGE_EXTENSIONS = set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'])
+IMAGE_EXTENSIONS = set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.avif'])
 VIDEO_EXTENSIONS = set(['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm'])
 
 class MediaType(Enum):
