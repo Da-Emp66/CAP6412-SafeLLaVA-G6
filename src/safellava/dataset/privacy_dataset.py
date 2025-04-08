@@ -7,6 +7,7 @@ from typing import Callable, List, Literal, Optional, Set
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 import kagglehub
+import shutil
 import tarfile
 import pandas as pd
 import yaml
@@ -363,7 +364,6 @@ def load_lsd_bench(
         try:
             expected_filename = os.path.join(download_dir, f"downsampled_videos/{row['video_id']}_trimmed.mp4")
             desired_filename = os.path.join(download_dir, os.path.basename(expected_filename))
-            row["video_id"] = desired_filename
             if not os.path.exists(desired_filename):
                 if not os.path.exists(expected_filename):
                     filepath = hf_hub_download(repo_id="TainU/LSDBench", filename=f"downsampled_videos/{row['video_id']}.mp4", repo_type="dataset", local_dir=download_dir)
@@ -372,8 +372,9 @@ def load_lsd_bench(
                     file, ext = os.path.splitext(filepath)
                     output_filepath = file + "_trimmed" + "." + ext.removeprefix(".")
                     trim_video_cv2(filepath, output_filepath, start_time=start_time_secs, end_time=end_time_secs)
+                    os.remove(filepath)
                 os.rename(expected_filename, desired_filename)
-                os.remove(filepath)
+            row["video_id"] = desired_filename
         except Exception as e:
             print(f"Could not download {row['video_id']} due to {e}")
 
@@ -382,17 +383,15 @@ def load_lsd_bench(
     dataset = load_dataset(dataset_name, split="test")
     dataset = dataset.map(alter_row)
 
+    print(dataset)
+    print(dataset[0])
+
     return dataset
 
-def load_midv500(dataset_name: str = ""):
+def load_midv500(dataset_name: str = "midv500", dataset_dir: str = "midv500_data/"):
     import midv500
-    # set directory for dataset to be downloaded
-    dataset_dir = 'midv500_data/'
-
-    # download and unzip the base midv500 dataset
-    dataset_name = "midv500"
     midv500.download_dataset(dataset_dir, dataset_name)
-
+    exit(0)
 
 def load_video_story(
     dataset_name: str = "video_story",
@@ -791,7 +790,29 @@ def process_dataset(
                     "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
                 },
             },
-            {
+            {   # Needs dataloader implementation
+                "dataset": "midv500",
+                "dataset_obtain_strategy": load_midv500,
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_description_without_private_attributes": False,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 0.0,
+                }
+            },
+            {   # Ready
+                "dataset": "TainU/LSDBench",
+                "dataset_obtain_strategy": load_lsd_bench,
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_description_without_private_attributes": False,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
+                }
+            },
+            {   # Ready
                 "dataset": "malterei/LLaVA-Video-small-swift",
                 "media_key": "videos",
                 "question_key": "query",
@@ -802,22 +823,7 @@ def process_dataset(
                     "classically_clean_description": True,
                     "keep_original_vqa_pair": True,
                     "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
-                }
-            },
-            {
-                "dataset": "midv500",
-                "dataset_obtain_strategy": "" # load_midv500,
-            },
-            {
-                "dataset": "TainU/LSDBench",
-                "dataset_obtain_strategy": load_lsd_bench,
-                "generate_samples_kwargs": {
-                    "must_contain_person": False,
-                    "create_description_without_private_attributes": False,
-                    "classically_clean_description": True,
-                    "keep_original_vqa_pair": True,
-                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
-                }
+                },
             },
 
             {  # Not supported due to videos being too long

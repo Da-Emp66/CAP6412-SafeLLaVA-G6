@@ -13,7 +13,7 @@ from faker import Faker
 import pandas as pd
 import rstr
 from safellava.dataset.dataset_fabrication import AnswerType, VQADataPoint
-from safellava.utils import IMAGE_EXTENSIONS
+from safellava.utils import IMAGE_EXTENSIONS, HomographyPixelWiseTransform, transform_image
 
 # OCR via Pillow for not exposing phone numbers, etc.
 
@@ -61,7 +61,7 @@ class ProtectedTextSequence:
 
 PROTECTED_SEQUENCES = {
     ProtectedTextSequenceTypes.BIRTHDATE: ProtectedTextSequence(
-        sequence_type=ProtectedTextSequence.BIRTHDATE,
+        sequence_type=ProtectedTextSequenceTypes.BIRTHDATE,
         regex_name=r"(birthday|birthdate|date of birth|DOB)",
         create_sample_func=FAKER.date_of_birth,
         create_sample_kwargs={},
@@ -81,13 +81,13 @@ PROTECTED_SEQUENCES = {
     ProtectedTextSequenceTypes.FINANCIAL_CARD_NUMBER: ProtectedTextSequence(
         sequence_type=ProtectedTextSequenceTypes.FINANCIAL_CARD_NUMBER,
         regex_name=r"(credit card number|debit card number|card number)",
-        create_sample_func=[FAKER.credit_card_number, FAKER.identity_card_number, FAKER.checking_account],
+        create_sample_func=FAKER.credit_card_number,
         create_sample_kwargs={},
     ),
     ProtectedTextSequenceTypes.FULL_NAME: ProtectedTextSequence(
         sequence_type=ProtectedTextSequenceTypes.FULL_NAME,
         regex_name=r"(name|full name|legal name)",
-        create_sample_func=FAKER.full_name,
+        create_sample_func=FAKER.name,
         create_sample_kwargs={},
     ),
     ProtectedTextSequenceTypes.STREET_ADDRESS: ProtectedTextSequence(
@@ -136,13 +136,13 @@ POSSIBLE_SAFE_TEXT_FUNCS = [
     FAKER.random_int,
     FAKER.coordinate,
     FAKER.country,
-    FAKER.state_name,
-    FAKER.real_city_name,
+    FAKER.state,
+    FAKER.city,
     generate_random_equation,
 ]
 
 def obtain_random_safe_text() -> str:
-    return random.choice(POSSIBLE_SAFE_TEXT_FUNCS)()
+    return str(random.choice(POSSIBLE_SAFE_TEXT_FUNCS)())
 
 def obtain_protected_text(sequence_type: ProtectedTextSequenceTypes) -> Tuple[str, str]:
     text_sequence = PROTECTED_SEQUENCES.get(sequence_type)
@@ -150,7 +150,7 @@ def obtain_protected_text(sequence_type: ProtectedTextSequenceTypes) -> Tuple[st
     if isinstance(create_sample_func, list):
         create_sample_func = random.choice(create_sample_func)
 
-    sequence_sample = create_sample_func(**text_sequence.create_sample_kwargs)
+    sequence_sample = str(create_sample_func(**text_sequence.create_sample_kwargs))
     mask = REDACTED_TOKEN
 
     if random.random() > 0.2:
@@ -183,7 +183,7 @@ def normalize_image_sizes(image_filepaths: List[str]) -> List[str]:
     for file in files:
         im = Image.open(file)
         im_resized = im.resize((mean_width, mean_height), Image.LANCZOS)
-        im_resized.save(file, 'JPEG', quality=95)
+        im_resized.convert('RGB').save(file, quality=95)
         final_frame_paths.append(file)
 
     return final_frame_paths
@@ -222,7 +222,7 @@ def place_sentence_on_image_template(
 
     num_lines = len(text.splitlines())
     width, height = image.size
-    if font is not None:
+    if font_name is not None:
         font = ImageFont.truetype(f"{font_name}.ttf", font_size)
     else:
         font = ImageFont.load_default(size=font_size)
@@ -234,11 +234,26 @@ def place_sentence_on_image_template(
 
     return save_filepath
 
-def multiplex_video_frames(output_frame_base: str, num_frames: int) -> List[str]:
-    return [output_frame_base] * num_frames
+def multiplex_video_frames(output_frame_base: str, num_frames: int, allow_movements: bool = True) -> List[str]:
+    output_frame_base_wo_ext, _ext = os.path.splitext(output_frame_base)
+    
+    if not allow_movements:
+        return [output_frame_base] * num_frames
+    else:
+        current_homography_transform = HomographyPixelWiseTransform(
+            pixelwise_yaw_change=random.randint(-7, 7),
+            pixelwise_pitch_change=random.randint(-18, 18),
+            anglewise_roll_change=random.randint(-4, 4)
+        )
+        frames = [output_frame_base]
+        for idx in range(num_frames - 1):
+            filename = f"{output_frame_base_wo_ext}_derivative_{idx}.png"
+            cv2.imwrite(filename, transform_image(output_frame_base, homography_transform=current_homography_transform * idx))
+            frames.append(filename)
+        return frames if random.random() > 0.5 else frames[::-1]
 
 def get_random_privacy_provoking_text() -> Tuple[str, str, str, AnswerType]:
-    sample_text, masked_text = obtain_protected_text()
+    sample_text, masked_text = obtain_protected_text(ProtectedTextSequenceTypes(random.randint(0, 8)))
     return (
         sample_text,
         random.choice(READ_OCR_PROMPTS).replace("{media}", "video"),
@@ -259,7 +274,7 @@ def create_random_ocr_video_text_pair(
     image_template: str,
     output_video_filepath: str,
 ) -> Tuple[str, str, str]:
-    output_video_name, _output_video_ext = os.path.splitext()
+    output_video_name, _output_video_ext = os.path.splitext(output_video_filepath)
     is_privacy_provoking = True if random.random() > 0.5 else False
     text_on_image, expected_ocr_response = (None, None)
 
@@ -290,9 +305,12 @@ def main(args):
     image_templates = os.listdir(image_templates_dir)
     image_templates = [os.path.join(image_templates_dir, file) for file in image_templates]
     columns = list(VQADataPoint._fields) + ["original_dataset_index"]
+    
+    normalize_image_sizes(image_templates)
 
     current_df = pd.DataFrame()
 
+    num_rows_already_processed = 0
     if os.path.exists(destination_csv):
         previous_df = pd.read_csv(destination_csv, sep='|', index_col=0)
         num_rows_already_processed = int(previous_df.iloc[-1]["original_dataset_index"]) + 1
@@ -301,10 +319,12 @@ def main(args):
         print(f"Found current dataframe at `{destination_csv}`. Resuming at dataset index `{num_rows_already_processed}`.")
 
     for idx in range(num_videos):
+        if idx < num_rows_already_processed:
+            continue
         print(f"Making video {idx + 1}:")
         image_template = random.choice(image_templates)
         sample = create_random_ocr_video_text_pair(image_template, os.path.join(video_outputs_dir, f"ocr_sample_{idx}.avi"))
-        sample = list(sample[1:-1]) + [sample[-1].value] + [idx]
+        sample = list(sample[:-1]) + [sample[-1].value] + [idx]
         current_df = pd.concat([current_df, pd.DataFrame([sample], columns=columns)], ignore_index=True)
         current_df.to_csv(
             destination_csv,
@@ -331,7 +351,7 @@ if __name__ == "__main__":
         "-n",
         "--num-videos",
         type=int,
-        default=10000,
+        default=1, # 10000,
         required=False,
     )
     parser.add_argument(

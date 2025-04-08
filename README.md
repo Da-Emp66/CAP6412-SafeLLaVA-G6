@@ -94,6 +94,11 @@ One of the processes for our dataset curation and tuning is as follows:
     # Curate a dataset - This is the final step in creating your own scrubbed dataset!
     uv run dataset/privacy_dataset.py -p curate -d hollywood2
 
+    # Create an OCR subset dataset - Optional step
+    cd ../../
+    uv run src/safellava/dataset/privacy_ocr_subset.py
+    cd src/safellava
+
     ### The following steps are advanced steps involved in tuning on your own generated dataset.
 
     # Merge two curated datasets
@@ -111,5 +116,5 @@ One of the processes for our dataset curation and tuning is as follows:
     # This should give you a model as output.
 
     # Infer on your tuned model
-    uv run dataset/privacy_dataset.py -m tuned -t <path-to-tuned-model-checkpoint>
+    uv run models/models.py -m tuned -t <path-to-tuned-model-checkpoint>
 

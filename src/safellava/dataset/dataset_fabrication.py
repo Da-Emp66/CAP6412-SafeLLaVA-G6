@@ -90,7 +90,14 @@ class VQADataCuratorConstruct:
         loaded_dataset = dataset_obtain_strategy(
             dataset,
             **dataset_obtain_kwargs,
-        )["train"].remove_columns("Unnamed: 0")
+        )
+        try:
+            train_split = loaded_dataset["train"]
+            loaded_dataset = train_split
+        except Exception as err:
+            print(f"Encountered `{err}` on choosing train split, assuming dataset already in correct split.")
+        
+        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
 
         # Prepare variables
         num_samples_obtained = 0

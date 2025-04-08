@@ -1,4 +1,5 @@
 import base64
+from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO, StringIO
 import os
@@ -265,6 +266,54 @@ def convert_image_to_base64(image: Any) -> str:
     b64_encoded_image = base64.b64encode(buffered.getvalue())
 
     return b64_encoded_image
+
+@dataclass
+class HomographyPixelWiseTransform:
+    pixelwise_yaw_change: int = 0 # Positive for positive yaw change, negative for negative yaw change
+    pixelwise_pitch_change: int = 0 # Positive for positive pitch change, negative for negative pitch change
+    anglewise_roll_change: int = 0
+
+    def __mul__(self, other: float):
+        return HomographyPixelWiseTransform(
+            pixelwise_pitch_change=self.pixelwise_pitch_change * other,
+            pixelwise_yaw_change=self.pixelwise_yaw_change * other,
+            anglewise_roll_change=self.anglewise_roll_change * other,
+        )
+
+    def __rmul__(self, other: float):
+        return self.__mul__(other)
+
+def transform_image(
+    image_path: str,
+    homography_transform: HomographyPixelWiseTransform = HomographyPixelWiseTransform(),
+    scale: float = 1.0,
+):
+    image = cv2.imread(image_path)
+    h, w = image.shape[:2]
+    center = (w // 2, h // 2)
+    src_points = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    dst_points = src_points
+
+    if homography_transform.pixelwise_pitch_change < 0:
+        delta = homography_transform.pixelwise_pitch_change
+        dst_points = np.add(dst_points, np.float32([[0, 0], [0, 0], [delta, delta], [-delta, delta]]))
+    elif homography_transform.pixelwise_pitch_change > 0:
+        delta = homography_transform.pixelwise_pitch_change
+        dst_points = np.add(dst_points, np.float32([[delta, delta], [-delta, delta], [0, 0], [0, 0]]))
+
+    if homography_transform.pixelwise_yaw_change < 0:
+        delta = homography_transform.pixelwise_yaw_change
+        dst_points = np.add(dst_points, np.float32([[delta, delta], [0, 0], [0, 0], [delta, -delta]]))
+    elif homography_transform.pixelwise_yaw_change > 0:
+        delta = homography_transform.pixelwise_yaw_change
+        dst_points = np.add(dst_points, np.float32([[0, 0], [-delta, delta], [-delta, -delta], [0, 0]]))
+    
+    angle = homography_transform.anglewise_roll_change
+    rotation_matrix = cv2.getRotationMatrix2D(center, angle, scale)
+    perspective_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
+    transformation_matrix = np.dot(perspective_matrix, np.vstack([rotation_matrix, [0, 0, 1]]))
+    transformed_image = cv2.warpPerspective(image, transformation_matrix, (w, h))
+    return transformed_image
 
 def get_video_length_seconds(video_path: str) -> float:
     video = cv2.VideoCapture(video_path)
