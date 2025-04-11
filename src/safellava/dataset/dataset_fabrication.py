@@ -97,7 +97,11 @@ class VQADataCuratorConstruct:
         except Exception as err:
             print(f"Encountered `{err}` on choosing train split, assuming dataset already in correct split.")
         
-        loaded_dataset = loaded_dataset.remove_columns("Unnamed: 0")
+        try:
+            without_unnamed_column = loaded_dataset.remove_columns("Unnamed: 0")
+            loaded_dataset = without_unnamed_column
+        except Exception as err:
+            print(f"Encountered `{err}` on removing unnamed columns, assuming dataset does not have column `Unnamed: 0`.")
 
         # Prepare variables
         num_samples_obtained = 0
@@ -205,7 +209,7 @@ class VQADataCuratorConstruct:
                     sep='|',
                 )
             except Exception as e:
-                print(f"Error `{e.__class__}` at dataset index `{idx}`. Skipping...")
+                print(f"Error `{e}` at dataset index `{idx}`. Skipping...")
     
     def load_existing_dataset(
         self,

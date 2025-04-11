@@ -120,17 +120,15 @@ MATHEMATICAL_OPERATORS = ['+', '-', '*', '/', '%']
 
 def generate_random_equation():
     length_of_numeric_sample = random.randint(1, 3)
-    numeric_sample_numbers = [(random.random()**3) * 10000 for _ in length_of_numeric_sample]
-    numeric_sample_numbers = [int(number) if random.random() > 0.2 else number for number in length_of_numeric_sample]
+    numeric_sample_numbers = [(random.random()**3) * 10000 for _ in range(length_of_numeric_sample)]
+    numeric_sample_numbers = [int(number) if random.random() > 0.2 else number for number in numeric_sample_numbers]
     numeric_sample_numbers = [f"{FAKER.currency_symbol()} {number}" if random.random() > 0.9 else number for number in numeric_sample_numbers]
     selected_operators = [random.choice(MATHEMATICAL_OPERATORS) for _ in range(length_of_numeric_sample - 1)]
-    return " ".join(list(filter(lambda x: x is not None, chain(*zip_longest(numeric_sample_numbers, selected_operators, fillvalue=None)))))
+    return " ".join(list(map(str, filter(lambda x: x is not None, chain(*zip_longest(numeric_sample_numbers, selected_operators, fillvalue=None))))))
 
 POSSIBLE_SAFE_TEXT_FUNCS = [
-    FAKER.sentences,
     FAKER.sentence,
     FAKER.catch_phrase,
-    FAKER.binary,
     FAKER.color_rgb,
     FAKER.random_number,
     FAKER.random_int,
@@ -220,6 +218,8 @@ def place_sentence_on_image_template(
     image = Image.open(image_template)
     drawing = ImageDraw.Draw(image)
 
+    words = text.split(" ")
+    text = " ".join([x for y in (words[i:i+4] + ['\n'] * (i < len(words) - 3) for i in range(0, len(words), 4)) for x in y])
     num_lines = len(text.splitlines())
     width, height = image.size
     if font_name is not None:
@@ -227,7 +227,7 @@ def place_sentence_on_image_template(
     else:
         font = ImageFont.load_default(size=font_size)
 
-    text_length_in_pixels = drawing.textlength(text, font=font, font_size=font.size)
+    text_length_in_pixels = drawing.textlength(text.splitlines()[0], font=font, font_size=font.size)
     coord = ((width / 2) - (text_length_in_pixels / 2), (height / 2) - ((font.size * num_lines) + (4 * num_lines - 1) / 2))
     drawing.text(coord, text, fill=(0, 0, 0), font=font)
     image.save(save_filepath)
@@ -322,6 +322,7 @@ def main(args):
         if idx < num_rows_already_processed:
             continue
         print(f"Making video {idx + 1}:")
+
         image_template = random.choice(image_templates)
         sample = create_random_ocr_video_text_pair(image_template, os.path.join(video_outputs_dir, f"ocr_sample_{idx}.avi"))
         sample = list(sample[:-1]) + [sample[-1].value] + [idx]
@@ -351,7 +352,7 @@ if __name__ == "__main__":
         "-n",
         "--num-videos",
         type=int,
-        default=1, # 10000,
+        default=2700, # 10000,
         required=False,
     )
     parser.add_argument(

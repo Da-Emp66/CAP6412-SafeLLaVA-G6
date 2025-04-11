@@ -482,7 +482,7 @@ def generate_samples_for_vqa_pair(
     classically_clean_description: bool = True,
     # Refusal creation args
     create_refusals_for_private_attributes: bool = True,
-    chance_to_create_refusal_per_attribute: float = 0.16667,
+    chance_to_create_refusal_per_attribute: float = 0.06, # Should be ~ float(1.0 / len(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT))
     private_attributes_to_protect: List[str] = list(DEFAULT_PRIVATE_ATTRIBUTES_TO_PROTECT),
     refusal_question_templates: List[str] = list(REFUSAL_QUESTION_TEMPLATES),
     refusal_answer_templates: List[str] = list(REFUSAL_ANSWER_TEMPLATES),
@@ -804,12 +804,16 @@ def process_dataset(
             {   # Ready
                 "dataset": "TainU/LSDBench",
                 "dataset_obtain_strategy": load_lsd_bench,
+                "media_key": "video_id",
+                "question_key": "question",
+                "answer_key": "correct_answer",
                 "generate_samples_kwargs": {
                     "must_contain_person": False,
+                    "create_refusals_for_private_attributes": True,
                     "create_description_without_private_attributes": False,
                     "classically_clean_description": True,
                     "keep_original_vqa_pair": True,
-                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 1.0,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 0.0,
                 }
             },
             {   # Ready
