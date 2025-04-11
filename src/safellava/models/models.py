@@ -16,7 +16,6 @@ from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models.api_models import GPT
 from safellava.tuning.modelscope_tuning import TunedMultiModalLanguageModel
 from safellava.utils import get_video_length_seconds, load_media
-from safellava.models.low_quality_models import LlavaOnevision
 from safellava.models.models_of_unknown_quality import Phi_3_5_Multimodal
 
 ##########################################################################################################
@@ -282,7 +281,7 @@ MODEL_MAP = {
     "Ovis2-2B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-2B" }),
     "Ovis2-4B": (Ovis2, { "model_id": "AIDC-AI/Ovis2-4B" }),
     "MiniCPM-o-2_6": (MiniCPM, {}),
-    "Llava-OneVision-Qwen2-0.5B": (LlavaOnevision, {}),
+    # "Llava-OneVision-Qwen2-0.5B": (LlavaOnevision, {}),
     "Llava-Interleave-Qwen2-0.5B": (LlavaInterleave, {}),
 }
 
@@ -331,7 +330,7 @@ if __name__ == "__main__":
             "Ovis2-2B",
             "Ovis2-4B",
             "MiniCPM-o-2_6",
-            "Llava-OneVision-Qwen2-0.5B",
+            # "Llava-OneVision-Qwen2-0.5B",
             "Llava-Interleave-Qwen2-0.5B",
             "tuned",
         ],

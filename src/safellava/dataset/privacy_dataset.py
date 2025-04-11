@@ -977,7 +977,7 @@ if __name__ == "__main__":
             "Ovis2-2B",
             "Ovis2-4B",
             "MiniCPM-o-2_6",
-            "Llava-OneVision-Qwen2-0.5B",
+            # "Llava-OneVision-Qwen2-0.5B",
             "Llava-Interleave-Qwen2-0.5B",
         ],
         default="Qwen2-VL",
