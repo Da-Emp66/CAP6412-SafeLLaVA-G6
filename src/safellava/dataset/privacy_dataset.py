@@ -3,7 +3,9 @@ import json
 import os
 import random
 import re
+import time
 from typing import Callable, List, Literal, Optional, Set
+import zipfile
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 import kagglehub
@@ -14,7 +16,7 @@ import yaml
 from safellava.dataset.dataset_fabrication import AnswerType, VQADataCuratorConstruct, VQADataPoint
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models.models import instantiate_model_based_on_model_map
-from safellava.utils import MediaType, download_youtube_video, load_online_files, trim_video_cv2
+from safellava.utils import MediaType, download_youtube_video, find_file, load_online_files, trim_video_cv2
 
 #####################################################
 # Privacy Globals
@@ -388,10 +390,97 @@ def load_lsd_bench(
 
     return dataset
 
+def load_video_mme(
+    dataset_name: str = "lmms-lab/Video-MME",
+    download_dir: Optional[str] = None,
+    approx_total_samples: int = 500,
+):
+    if download_dir is None:
+        download_dir = os.path.join("data_downloads", dataset_name.replace("/", "_"))
+
+    os.makedirs(download_dir, exist_ok=True)
+
+    def alter_row(row):
+        options = row["options"]
+        row["question"] = row["question"] + "\n" + "\n".join(options) + "\nRespond with only the letter corresponding to the correct answer. Response: "
+    
+        try:
+            row["videoID"] = find_file(download_dir, f"{row['videoID']}.mp4")
+        except Exception as e:
+            print(f"Could not download {row['videoID']} due to {e}")
+
+        return row
+
+    dataset = load_dataset(dataset_name, split=f"test")
+
+    num_chunks = 2700 // approx_total_samples
+    print(f"Using {num_chunks - 1} chunks...")
+    
+    for idx in range(1, num_chunks):
+        zipped_file = f"videos_chunked_{idx:02}.zip"
+        extraction_dir = os.path.join(download_dir, zipped_file.rstrip(".zip"))
+        if not os.path.exists(extraction_dir):
+            file = hf_hub_download("lmms-lab/Video-MME", zipped_file, repo_type="dataset", local_dir=download_dir)
+            os.makedirs(extraction_dir, exist_ok=True)
+            with zipfile.ZipFile(file, 'r') as zip_ref:
+                zip_ref.extractall(extraction_dir)
+
+    start_map_time = time.time()
+    dataset = dataset.map(alter_row)
+    dataset = dataset.filter(lambda row: row["videoID"] is not None)
+    print(f"Loaded dataset in {time.time() - start_map_time} seconds!")
+    print(f"Final dataset length: {len(dataset)}")
+    
+    print(dataset)
+    print(dataset[0])
+
+    return dataset
+
 def load_midv500(dataset_name: str = "midv500", dataset_dir: str = "midv500_data/"):
     import midv500
-    midv500.download_dataset(dataset_dir, dataset_name)
-    exit(0)
+
+    midv500_root_dir = os.path.join(dataset_dir, dataset_name)
+
+    if not os.path.exists(midv500_root_dir):
+        midv500.download_dataset(dataset_dir, dataset_name)
+
+    # Get the name of the output CSV and if it exists
+    output_csv = os.path.join(dataset_dir, f"{dataset_name}.csv")
+    output_csv_exists = os.path.exists(output_csv)
+
+    # Set up the column contents
+    video_paths = list(
+        map(
+            lambda foldername: os.path.join(
+                midv500_root_dir,
+                foldername,
+                "videos",
+                list(
+                    filter(
+                        lambda video_file: video_file.endswith(".mp4"),
+                        sorted(os.listdir(os.path.join(midv500_root_dir, foldername, "videos")))
+                    )
+                )[-1]
+            ),
+            os.listdir(midv500_root_dir)
+        )
+    )
+
+    videos = []
+    questions = []
+
+    question_options = ["Read the words and numbers in this video.", "What do the words in this video say?"]
+
+    if not output_csv_exists:
+        for video_path in video_paths:
+            videos.append(video_path)
+            questions.append(random.choice(question_options))
+    
+        # Write to the CSV file
+        pd.DataFrame({"video": videos, "question": questions}).to_csv(output_csv, sep='|')
+
+    # Return the dataset loader
+    return load_dataset("csv", data_files=[output_csv], delimiter='|')
 
 def load_video_story(
     dataset_name: str = "video_story",
@@ -492,6 +581,7 @@ def generate_samples_for_vqa_pair(
     use_vlm_to_check_for_person: bool = True,
     chance_for_vlm_to_rephrase_question_and_or_answer_from_template: float = 0.25,
     use_vlm_to_rephrase_question_and_or_answer_from_template: bool = False,
+    force_question_vlm_answer_to_need_manual_revisitation: bool = False,
 ) -> List[VQADataPoint]:
     """Generate safe Media-Text (media + (question+answer)) pairs for the given media and/or its question and answer text.
     This method works by generating samples in three ways:
@@ -524,6 +614,7 @@ def generate_samples_for_vqa_pair(
         use_vlm_to_check_for_person (bool, optional): _description_. Defaults to True.
         chance_for_vlm_to_rephrase_question_and_or_answer_from_template (float, optional): _description_. Defaults to 0.25.
         use_vlm_to_rephrase_question_and_or_answer_from_template (bool, optional): _description_. Defaults to False.
+        force_question_vlm_answer_to_need_manual_revisitation (bool, optional): _description_. Defaults to False.
 
     Returns:
         List[VQADataPoint]: A list of samples that were generated from the original Media-Text pair
@@ -706,6 +797,17 @@ def generate_samples_for_vqa_pair(
 
             media_text_pairs.append(VQADataPoint(media, question, answer, AnswerType.UNKNOWN))
 
+    elif question is not None and answer is None and keep_original_vqa_pair:
+        if force_question_vlm_answer_to_need_manual_revisitation:
+            # Generate a new answer
+            vlm_original_question_answer = vlm(media, question.replace("{media}", media_category))
+            
+            # Append the Media-Text pair to the samples generated
+            media_text_pairs.append(VQADataPoint(media, question.replace("{media}", media_category), vlm_original_question_answer, AnswerType.NEEDS_MANUAL_REVISITATION))
+        else:
+            # TODO: Rephrase question to be safe? Add refusal if not safe?
+            raise NotImplementedError()
+
     # Return all the Media-Text pair samples
     return media_text_pairs
 
@@ -793,9 +895,13 @@ def process_dataset(
             {   # Needs dataloader implementation
                 "dataset": "midv500",
                 "dataset_obtain_strategy": load_midv500,
+                "media_key": "video",
+                "question_key": "question",
                 "generate_samples_kwargs": {
                     "must_contain_person": False,
-                    "create_description_without_private_attributes": False,
+                    "create_refusals_for_private_attributes": True,
+                    "create_description_without_private_attributes": True,
+                    "force_question_vlm_answer_to_need_manual_revisitation": True,
                     "classically_clean_description": True,
                     "keep_original_vqa_pair": True,
                     "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 0.0,
@@ -815,6 +921,21 @@ def process_dataset(
                     "keep_original_vqa_pair": True,
                     "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 0.0,
                 }
+            },
+            {   # Ready
+                "dataset": "lmms-lab/Video-MME",
+                "dataset_obtain_strategy": load_video_mme,
+                "media_key": "videoID",
+                "question_key": "question",
+                "answer_key": "answer",
+                "generate_samples_kwargs": {
+                    "must_contain_person": False,
+                    "create_refusals_for_private_attributes": False,
+                    "create_description_without_private_attributes": False,
+                    "classically_clean_description": True,
+                    "keep_original_vqa_pair": True,
+                    "chance_to_use_vlm_to_determine_whether_original_vqa_is_safe": 0.0,
+                },
             },
             {   # Ready
                 "dataset": "malterei/LLaVA-Video-small-swift",

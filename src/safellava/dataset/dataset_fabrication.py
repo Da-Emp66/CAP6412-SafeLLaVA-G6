@@ -15,6 +15,7 @@ class AnswerType(Enum):
     NORMAL = 0
     REFUSAL = 1
     UNKNOWN = 2
+    NEEDS_MANUAL_REVISITATION = 3
 
 class VQADataPoint(NamedTuple):
     media_path: str
@@ -289,6 +290,7 @@ class VQADataCuratorConstruct:
         Args:
             dataset_csv (str): _description_
         """
+        NEWLINE_CHAR = '\n'
         
         loaded_dataset = load_dataset("csv", data_files=[dataset_csv], delimiter='|')["train"]
 
@@ -302,8 +304,8 @@ class VQADataCuratorConstruct:
             lines.append(json.dumps({
                 "messages": [
                     {"role": "system", "content": "You are a helpful and harmless assistant."},
-                    {"role": "user", "content": f"<{media_type.value}>{row['question']}"},
-                    {"role": "assistant", "content": row["answer"]},
+                    {"role": "user", "content": f"<{media_type.value}>{row['question'].replace(NEWLINE_CHAR, '     ')}"},
+                    {"role": "assistant", "content": row["answer"].replace(NEWLINE_CHAR, "     ")},
                 ],
                 "videos": [row["media_path"]] if media_type == MediaType.VIDEO else [],
                 "images": [row["media_path"]] if media_type == MediaType.IMAGE else [],

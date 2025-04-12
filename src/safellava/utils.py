@@ -125,6 +125,13 @@ def load_online_files(
 
     return files
 
+def find_file(directory: str, filename: str) -> str | None:
+    for root, dirs, files in os.walk(directory):
+        if filename in files:
+            return os.path.join(root, filename)
+    
+    return None
+
 FIRST_FILTER = re.compile(r"\(.*\)|\[.*\]")
 SECOND_FILTER = re.compile(r"\~|\'|\!|\@|\#|\%|\^|\*|\&|\-|\(.*\)|\[.*\]|\°|\(|\)|\[|\]|\+|\<|\>|\?|\{|\}|\=|\"|\:|\;|\,|\|")
 THIRD_FILTER = re.compile(r"\ +")
@@ -137,7 +144,7 @@ def remove_special_characters_from_filename(filename: str) -> str:
     filename = re.sub(THIRD_FILTER, r" ", filename)
     return filename.replace(f" .{ext}", f".{ext}")
 
-def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube: bool = True) -> str:
+def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube: bool = True, filename: Optional[str] = None) -> str:
     """Download a Youtube video based on its video ID
 
     Args:
@@ -147,22 +154,23 @@ def download_youtube_video(video_id: str, download_folder: str = ".", use_pytube
         str: _description_
     """
     if use_pytube:
-        yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
+        yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}", 'WEB', use_po_token=True)
         stream = yt.streams.get_highest_resolution()
         if stream is None:
-            yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}")
+            yt = pytubefix.YouTube(f"https://www.youtube.com/watch?v={video_id}", 'WEB', use_po_token=True)
             stream = yt.streams.first()
-        filename = remove_special_characters_from_filename(f"{stream.default_filename.split('.')[0]}.mp4")
+        future_filename = filename or remove_special_characters_from_filename(f"{stream.default_filename.split('.')[0]}.mp4")
         os.makedirs(download_folder, exist_ok=True)
         return stream.download(
             output_path=download_folder,
             filename=filename,
         )
     else:
+        future_filename = os.path.join(download_folder, filename or f"{video_id}.mp4")
         return load_online_files(
             urls=[f"https://www.youtube.com/embed/{video_id}"],
             downloads_dir=download_folder,
-            future_filename=[f"{video_id}.mp4"],
+            future_filenames=[future_filename],
         )[0]
 
 def trim_video_cv2(input_file: str, output_file: str, start_time: float, end_time: float):
