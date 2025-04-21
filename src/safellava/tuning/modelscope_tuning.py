@@ -38,9 +38,11 @@ class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
              "temperature": 0,
              "max_new_tokens": 2048,
         },
+        template: str = "You are a helpful and harmless assistant.",
     ):
         self.model_id = model_id
         self.checkpoint = checkpoint
+        self.template = template
         self.parser = HfArgumentParser(InferArguments)
         self.model_instantiation_kwargs = model_instantiation_kwargs
         self.model_instantiation_kwargs.update({ "adapters": checkpoint })
@@ -62,7 +64,7 @@ class TunedMultiModalLanguageModel(BaseMultiModalLanguageModel):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful and harmless assistant.",
+                    "content": self.template,
                 },
                 {
                     "role": "user",
@@ -233,7 +235,7 @@ def main():
     from safellava.dataset.privacy_dataset import PROTECTION_PROMPT
     tuned_model = TunedMultiModalLanguageModel(
         "AIDC-AI/Private-Ovis2-1B",
-        "checkpoint-1474-20250323T185905Z-001/checkpoint-1474",
+        "checkpoint-4550", # "checkpoint-1474-20250323T185905Z-001/checkpoint-1474",
         model_instantiation_kwargs={
             "stream": True,
             "temperature": 0,
@@ -244,12 +246,19 @@ def main():
                 # "llm_attn_implementation": None,
             },
         },
+        template="You are a helpful and harmless assistant, who does not expose any private information about people or from documents in videos. For people, you should not describe or indicate details regarding their hair color, hairstyle, race, sex, gender, age, height, weight, or any other personally identifiable traits, but you can describe their actions and their clothing as seen in the video. For documents, you should read all text as normal except for text containing private information. When you see a piece of private information such as a name, phone number, social security number, debit card number, etc., you should not read that word and should instead output a <REDACTED_FOR_PRIVACY> token in its place. Make sure to read all words that are not private info as normal. If prompted by the user for private information explicitly, either refuse (for info relevant to the humans seen in the video) or redact the information (for info seen in the documents). If asked to describe or answer questions about the video, do describe the video or answer the question in a detailed way that does not expose the private information of the people or document text in the video."
     )
 
-    print(tuned_model(
-        video="privacy_preservation/hollywood2_curated/videos/actioncliptest00001.avi",
-        text=f"Describe this video. {PROTECTION_PROMPT.replace('{media}', 'video')}",
-    ))
+    while True:
+        video = input("Video >")
+        text = input("Prompt >")
+        if video == "exit" or text == "exit":
+            break
+
+        print(tuned_model(
+            video=video, # "privacy_preservation/hollywood2_curated/videos/actioncliptest00001.avi",
+            text=text, # {PROTECTION_PROMPT.replace('{media}', 'video')}
+        ))
 
 if __name__ == "__main__":
     main()
