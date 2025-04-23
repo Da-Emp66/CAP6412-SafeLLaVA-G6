@@ -394,6 +394,7 @@ def load_video_mme(
     dataset_name: str = "lmms-lab/Video-MME",
     download_dir: Optional[str] = None,
     approx_total_samples: int = 500,
+    chunks_override: Optional[List[int]] = None,
 ):
     if download_dir is None:
         download_dir = os.path.join("data_downloads", dataset_name.replace("/", "_"))
@@ -413,11 +414,14 @@ def load_video_mme(
 
     dataset = load_dataset(dataset_name, split=f"test")
 
-    num_chunks = 2700 // approx_total_samples
-    print(f"Using {num_chunks - 1} chunks...")
+    if chunks_override is None:
+        num_chunks = 2700 // approx_total_samples
+        chunks_override = list(range(1, num_chunks))
+
+    print(f"Using {len(chunks_override)} chunks...")
     
-    for idx in range(1, num_chunks):
-        zipped_file = f"videos_chunked_{idx:02}.zip"
+    for chunk_idx in chunks_override:
+        zipped_file = f"videos_chunked_{chunk_idx:02}.zip"
         extraction_dir = os.path.join(download_dir, zipped_file.rstrip(".zip"))
         if not os.path.exists(extraction_dir):
             file = hf_hub_download("lmms-lab/Video-MME", zipped_file, repo_type="dataset", local_dir=download_dir)
@@ -925,6 +929,9 @@ def process_dataset(
             {   # Ready
                 "dataset": "lmms-lab/Video-MME",
                 "dataset_obtain_strategy": load_video_mme,
+                "dataset_obtain_kwargs": {
+                    "chunks_override": [5, 6, 7, 8],
+                },
                 "media_key": "videoID",
                 "question_key": "question",
                 "answer_key": "answer",

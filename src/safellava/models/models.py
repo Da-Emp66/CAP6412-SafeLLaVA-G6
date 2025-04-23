@@ -11,6 +11,8 @@ from transformers import (
     AutoTokenizer
 )
 from qwen_vl_utils import process_vision_info
+from moviepy.editor import VideoFileClip
+from PIL import Image
 
 from safellava.interfaces import BaseMultiModalLanguageModel
 from safellava.models.api_models import GPT
@@ -234,7 +236,18 @@ class Ovis2(BaseMultiModalLanguageModel):
 
     def __call__(self, video: Optional[str] = None, text: Optional[str] = None) -> str:
         # Load the video as frames
-        _media_type, frames, num_frames = load_media(video, 1)
+        # _media_type, frames, num_frames = load_media(video, 1)
+        num_frames = 16
+        max_partition = 1
+        with VideoFileClip(video) as clip:
+            total_frames = int(clip.fps * clip.duration)
+            if total_frames <= num_frames:
+                sampled_indices = range(total_frames)
+            else:
+                stride = total_frames / num_frames
+                sampled_indices = [min(total_frames - 1, int((stride * i + stride * (i + 1)) / 2)) for i in range(num_frames)]
+            frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
+            frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
 
         images = frames
         query = '\n'.join(['<image>'] * num_frames) + '\n' + text
